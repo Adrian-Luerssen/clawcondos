@@ -72,16 +72,30 @@ See [Backend API Documentation](docs/BACKEND-API.md) for the full protocol speci
 ## Project Structure
 
 ```
-apps/
-├── index.html          # Main dashboard
-├── app.html            # App view with assistant panel
+sharp/
+├── index.html           # Main dashboard
+├── app.html             # App view with assistant panel
+├── shell.html           # Shell/terminal view
 ├── lib/
-│   └── gateway-ws.js   # WebSocket client library
+│   ├── config.js        # Configuration loader
+│   └── gateway-ws.js    # WebSocket client library
 ├── .registry/
-│   └── apps.json       # App registry
-└── docs/
-    ├── BACKEND-API.md  # Protocol documentation
-    └── SETUP.md        # Deployment guide
+│   └── apps.json        # App registry (gitignored, use apps.example.json)
+├── docs/
+│   ├── BACKEND-API.md   # Protocol documentation
+│   └── SETUP.md         # Deployment guide
+├── tests/               # Vitest test suite
+├── Caddyfile.example    # Caddy reverse proxy config template
+└── config.example.json  # Configuration template
+```
+
+## Testing
+
+```bash
+npm install
+npm test              # Run all tests
+npm run test:watch    # Watch mode
+npm run test:coverage # With coverage report
 ```
 
 ## Origin: Clawdbot

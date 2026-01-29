@@ -4,13 +4,18 @@ Sharp communicates with its backend via WebSocket using a simple JSON-RPC-style 
 
 ## Connection
 
-Sharp connects to the WebSocket endpoint at the configured `gatewayWsUrl` (default: same origin with `/` path).
+Sharp connects to the WebSocket endpoint at the configured `gatewayWsUrl` (default: same origin with `/ws` path when behind a reverse proxy).
 
-### Authentication
+### Authentication Flow
+
+1. Client opens WebSocket connection
+2. Server sends `connect.challenge` event with a nonce
+3. Client responds with `connect` request including auth credentials
+4. Server validates and responds with `hello-ok`
 
 Authentication can be provided via:
-- Query parameter: `?password=xxx` or `?token=xxx`
-- The `connect` message (recommended)
+- Query parameter: `?password=xxx` or `?token=xxx` (legacy, not recommended)
+- The `connect` message with `auth` field (recommended)
 
 ## Message Format
 
@@ -61,7 +66,7 @@ All messages are JSON objects with the following structure:
 
 ### `connect`
 
-Authenticate and establish session. Called automatically on WebSocket open.
+Authenticate and establish session. Called in response to `connect.challenge` event.
 
 **Request:**
 ```json
@@ -72,6 +77,9 @@ Authenticate and establish session. Called automatically on WebSocket open.
   "params": {
     "minProtocol": 3,
     "maxProtocol": 3,
+    "auth": {
+      "password": "your-password-here"
+    },
     "client": {
       "id": "sharp-dashboard",
       "displayName": "Sharp Dashboard",
@@ -82,6 +90,11 @@ Authenticate and establish session. Called automatically on WebSocket open.
   }
 }
 ```
+
+**Auth Options:**
+- `auth.password` — Password authentication
+- `auth.token` — Token/API key authentication
+- Omit `auth` if using reverse proxy authentication (e.g., Caddy with header injection)
 
 **Response:**
 ```json
@@ -237,10 +250,20 @@ List available sessions with metadata.
   "id": "r5",
   "method": "sessions.list",
   "params": {
-    "limit": 50
+    "limit": 50,
+    "messageLimit": 1
   }
 }
 ```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | number | 50 | Maximum sessions to return |
+| `messageLimit` | number | 0 | Include N recent messages per session |
+| `kinds` | string[] | all | Filter by session kind (`main`, `subagent`, `cron`) |
+| `activeMinutes` | number | - | Only sessions active within N minutes |
 
 **Response:**
 ```json
@@ -316,6 +339,19 @@ Health check endpoint.
 ## Events
 
 The server may push events to connected clients:
+
+### `connect.challenge`
+Sent immediately after WebSocket connection opens. Client must respond with `connect` request.
+
+```json
+{
+  "type": "event",
+  "event": "connect.challenge",
+  "payload": {
+    "nonce": "abc123..."
+  }
+}
+```
 
 ### `agent`
 Notifies about agent run status changes.

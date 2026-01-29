@@ -1,6 +1,6 @@
 {
   "_comment": "Sharp Dashboard Configuration Example",
-  "_usage": "Copy to config.json and customize. Load via: window.SHARP_CONFIG = await fetch('/config.json').then(r => r.json())",
+  "_usage": "Copy to config.json and customize",
   
   "gatewayWsUrl": "wss://your-domain.com/",
   "gatewayHttpUrl": "https://your-domain.com",
@@ -8,15 +8,20 @@
   
   "branding": {
     "name": "My Dashboard",
-    "logo": null,
-    "favicon": null
+    "logo": "🚀",
+    "tagline": "Multi-Agent Dashboard"
+  },
+  
+  "sessions": {
+    "pollInterval": 30000,
+    "defaultLimit": 50
   },
   
   "defaultSessionKey": "agent:main:main",
   
   "features": {
-    "chat": true,
-    "apps": true,
-    "shell": true
+    "showApps": true,
+    "showSubagents": true,
+    "showAgents": true
   }
 }
