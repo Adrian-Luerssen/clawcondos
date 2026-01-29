@@ -2017,10 +2017,11 @@
       updateSendButton();
       
       try {
+        const idempotencyKey = `msg-${state.currentSession.key}-${Date.now()}`;
         const result = await rpcCall('chat.send', {
           sessionKey: state.currentSession.key,
           message: text,
-          timeoutSeconds: 120
+          idempotencyKey
         }, 130000);
         
         thinkingEl.remove();
@@ -2096,10 +2097,11 @@
       if (!state.isThinking || !state.currentSession) return;
       
       try {
+        const idempotencyKey = `stop-${state.currentSession.key}-${Date.now()}`;
         await rpcCall('chat.send', {
           sessionKey: state.currentSession.key,
           message: '/stop',
-          timeoutSeconds: 5
+          idempotencyKey
         }, 10000);
         addChatMessage('system', '⏹ Stop requested');
       } catch (err) {
