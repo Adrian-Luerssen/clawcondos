@@ -1755,6 +1755,9 @@
       // Custom session names
       sessionNames: JSON.parse(localStorage.getItem('sharp_session_names') || '{}'),
       
+      // Search
+      searchQuery: '',
+      
       // Auto-archive: 'never' or number of days
       autoArchiveDays: localStorage.getItem('sharp_auto_archive_days') || '7'
     };
@@ -1832,6 +1835,50 @@
         setCustomSessionName(key, newName);
       }
     }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // SESSION SEARCH
+    // ═══════════════════════════════════════════════════════════════
+    function handleSearchInput(value) {
+      state.searchQuery = value.toLowerCase().trim();
+      renderSessions();
+    }
+    
+    function clearSearch() {
+      state.searchQuery = '';
+      document.getElementById('sessionSearchInput').value = '';
+      renderSessions();
+    }
+    
+    function handleSearchKeydown(event) {
+      if (event.key === 'Escape') {
+        clearSearch();
+        document.getElementById('sessionSearchInput').blur();
+      } else if (event.key === 'Enter') {
+        // Select first visible session
+        const firstSession = document.querySelector('#sessionsList .item');
+        if (firstSession) firstSession.click();
+      }
+    }
+    
+    function matchesSearch(session) {
+      if (!state.searchQuery) return true;
+      const q = state.searchQuery;
+      // Match against name, key, label, displayName
+      const name = getSessionName(session).toLowerCase();
+      const key = session.key.toLowerCase();
+      const label = (session.label || '').toLowerCase();
+      const displayName = (session.displayName || '').toLowerCase();
+      return name.includes(q) || key.includes(q) || label.includes(q) || displayName.includes(q);
+    }
+    
+    // Keyboard shortcut: Cmd/Ctrl+K to focus search
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        document.getElementById('sessionSearchInput')?.focus();
+      }
+    });
     
     // ═══════════════════════════════════════════════════════════════
     // AUTO-ARCHIVE
@@ -2474,6 +2521,7 @@
       // Filter and sort sessions
       let displaySessions = state.sessions.filter(s => {
         if (isSessionArchived(s.key) && !state.showArchived) return false;
+        if (!matchesSearch(s)) return false;
         return true;
       });
       
