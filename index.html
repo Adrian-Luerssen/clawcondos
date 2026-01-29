@@ -100,6 +100,55 @@
     }
     .section-action:hover { background: var(--bg-hover); color: var(--accent); }
     
+    /* Session pin/archive icons */
+    .session-actions {
+      display: flex;
+      gap: 2px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .item:hover .session-actions { opacity: 1; }
+    
+    .session-action-btn {
+      width: 24px;
+      height: 24px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    .session-action-btn:hover { background: var(--bg-hover); color: var(--text); }
+    .session-action-btn.pinned { color: var(--yellow); opacity: 1; }
+    .session-action-btn.archived { color: var(--purple); }
+    
+    /* Always show pinned indicator */
+    .item .session-action-btn.pinned { opacity: 1; }
+    
+    /* Archived session styling */
+    .item.archived-session { opacity: 0.5; }
+    .item.archived-session:hover { opacity: 0.7; }
+    
+    /* Show archived toggle */
+    .show-archived-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .show-archived-toggle:hover { background: var(--bg-hover); color: var(--text); }
+    .show-archived-toggle input { margin: 0; cursor: pointer; }
+    
     .item {
       display: flex;
       align-items: center;
@@ -178,6 +227,84 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.4; }
     }
+    
+    /* Agent Status Indicators */
+    .agent-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      position: relative;
+      cursor: help;
+    }
+    
+    .agent-status.idle { background: var(--green); }
+    .agent-status.thinking { background: var(--yellow); animation: agent-pulse 1.2s ease-in-out infinite; }
+    .agent-status.error { background: var(--red); }
+    .agent-status.offline { background: var(--text-dim); opacity: 0.5; }
+    
+    @keyframes agent-pulse {
+      0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(210, 153, 34, 0.4); }
+      50% { transform: scale(1.15); opacity: 0.85; box-shadow: 0 0 8px 2px rgba(210, 153, 34, 0.3); }
+    }
+    
+    .agent-status::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 4px 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 0.7rem;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+      margin-bottom: 4px;
+      z-index: 100;
+    }
+    
+    .agent-status:hover::after { opacity: 1; }
+    
+    /* Header status indicator (larger) */
+    .header-status {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-left: 8px;
+      cursor: help;
+      position: relative;
+    }
+    
+    .header-status.idle { background: var(--green); }
+    .header-status.thinking { background: var(--yellow); animation: agent-pulse 1.2s ease-in-out infinite; }
+    .header-status.error { background: var(--red); }
+    .header-status.offline { background: var(--text-dim); opacity: 0.5; }
+    
+    .header-status::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 4px 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 0.75rem;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+      margin-top: 4px;
+      z-index: 100;
+    }
+    
+    .header-status:hover::after { opacity: 1; }
     
     .control-ui-btn {
       display: flex;
@@ -620,6 +747,22 @@
       border-radius: 4px;
       font-size: 0.75rem;
     }
+    .session-info-spacer { flex: 1; }
+    .export-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s;
+    }
+    .export-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .export-btn svg { width: 14px; height: 14px; fill: currentColor; }
     
     /* ═══════════════════════════════════════════════════════════════
        LOGIN MODAL
@@ -1021,6 +1164,123 @@
     }
     
     /* ═══════════════════════════════════════════════════════════════
+       MULTI-SELECT MODE
+       ═══════════════════════════════════════════════════════════════ */
+    .session-checkbox {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    
+    .multi-select-mode .session-checkbox {
+      display: flex;
+    }
+    
+    .session-checkbox.checked {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    
+    .session-checkbox.checked::after {
+      content: '✓';
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    
+    .session-checkbox:hover {
+      border-color: var(--accent);
+    }
+    
+    .bulk-action-bar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--bg-active);
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+    
+    .bulk-action-bar.visible {
+      display: flex;
+    }
+    
+    .bulk-count {
+      font-size: 0.85rem;
+      color: var(--text);
+      font-weight: 500;
+    }
+    
+    .bulk-actions {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .bulk-btn {
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.15s;
+    }
+    
+    .bulk-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    
+    .bulk-btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+    
+    .bulk-btn.primary:hover {
+      opacity: 0.9;
+    }
+    
+    .select-all-row {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    
+    .select-all-row:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+    }
+    
+    .multi-select-mode .select-all-row {
+      display: flex;
+    }
+    
+    .multi-select-mode .item {
+      padding-left: 8px;
+    }
+    
+    .multi-select-mode .item-icon {
+      margin-left: 8px;
+    }
+    
+    /* ═══════════════════════════════════════════════════════════════
        ANIMATIONS
        ═══════════════════════════════════════════════════════════════ */
     @media (prefers-reduced-motion: no-preference) {
@@ -1096,7 +1356,24 @@
       <div class="section">
         <div class="section-header">
           <span class="section-title">Sessions</span>
+          <label class="show-archived-toggle" id="showArchivedToggle" style="display: none;">
+            <input type="checkbox" onchange="toggleShowArchived()">
+            📦
+          </label>
+          <button class="section-action" id="selectModeBtn" onclick="enterMultiSelect()" title="Select sessions">☑</button>
           <button class="section-action" onclick="refresh()" title="Refresh">↻</button>
+        </div>
+        <div class="bulk-action-bar" id="bulkActionBar">
+          <span class="bulk-count" id="bulkCount">0 selected</span>
+          <div class="bulk-actions">
+            <button class="bulk-btn" onclick="bulkArchive()">📦 Archive</button>
+            <button class="bulk-btn" onclick="bulkPin()">📌 Pin</button>
+            <button class="bulk-btn primary" onclick="exitMultiSelect()">Cancel</button>
+          </div>
+        </div>
+        <div class="select-all-row" id="selectAllRow" onclick="toggleSelectAll()">
+          <div class="session-checkbox" id="selectAllCheckbox"></div>
+          <span>Select All</span>
         </div>
         <div id="sessionsList"></div>
       </div>
@@ -1135,6 +1412,7 @@
   <main class="main">
     <header class="main-header">
       <h1 class="main-title" id="mainTitle">Dashboard</h1>
+      <div class="header-status idle" id="headerStatusIndicator" data-tooltip="Ready" style="display: none;"></div>
       <span class="main-subtitle" id="mainSubtitle"></span>
       <div class="main-header-spacer"></div>
       <button class="header-btn" id="headerAction" onclick="headerAction()" style="display: none;">Action</button>
@@ -1180,6 +1458,11 @@
           <span class="session-info-item">📍 <span id="sessionKeyDisplay">-</span></span>
           <span class="session-info-item">🤖 <span class="session-badge" id="sessionModel">-</span></span>
           <span class="session-info-item">📊 <span id="sessionTokens">-</span> tokens</span>
+          <span class="session-info-spacer"></span>
+          <button class="export-btn" onclick="exportChatAsMarkdown()" title="Export as Markdown">
+            <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            Export
+          </button>
         </div>
         <div class="chat-messages" id="chatMessages"></div>
         <div class="chat-input-area">
@@ -1233,6 +1516,13 @@
       chatHistory: [],
       isThinking: false,
       
+      // Agent status per session: 'idle' | 'thinking' | 'error' | 'offline'
+      sessionStatus: {},
+      
+      // Multi-select
+      multiSelectMode: false,
+      selectedSessions: new Set(),
+      
       // Auth - loaded from config or localStorage
       // Token should be set via config.json or login modal, NOT hardcoded
       token: localStorage.getItem('sharp_token') || null,
@@ -1275,8 +1565,59 @@
       
       // Streaming
       activeRuns: new Map(),
-      sessionInputReady: new Map()
+      sessionInputReady: new Map(),
+      
+      // Pin & Archive
+      pinnedSessions: JSON.parse(localStorage.getItem('sharp_pinned_sessions') || '[]'),
+      archivedSessions: JSON.parse(localStorage.getItem('sharp_archived_sessions') || '[]'),
+      showArchived: false
     };
+    
+    // ═══════════════════════════════════════════════════════════════
+    // SESSION PIN & ARCHIVE
+    // ═══════════════════════════════════════════════════════════════
+    function isSessionPinned(key) {
+      return state.pinnedSessions.includes(key);
+    }
+    
+    function isSessionArchived(key) {
+      return state.archivedSessions.includes(key);
+    }
+    
+    function togglePinSession(key) {
+      const idx = state.pinnedSessions.indexOf(key);
+      if (idx >= 0) {
+        state.pinnedSessions.splice(idx, 1);
+      } else {
+        state.pinnedSessions.push(key);
+      }
+      localStorage.setItem('sharp_pinned_sessions', JSON.stringify(state.pinnedSessions));
+      renderSessions();
+      renderSessionsGrid();
+    }
+    
+    function toggleArchiveSession(key) {
+      const idx = state.archivedSessions.indexOf(key);
+      if (idx >= 0) {
+        state.archivedSessions.splice(idx, 1);
+      } else {
+        state.archivedSessions.push(key);
+        // Unpin if archived
+        const pinIdx = state.pinnedSessions.indexOf(key);
+        if (pinIdx >= 0) {
+          state.pinnedSessions.splice(pinIdx, 1);
+          localStorage.setItem('sharp_pinned_sessions', JSON.stringify(state.pinnedSessions));
+        }
+      }
+      localStorage.setItem('sharp_archived_sessions', JSON.stringify(state.archivedSessions));
+      renderSessions();
+      renderSessionsGrid();
+    }
+    
+    function toggleShowArchived() {
+      state.showArchived = !state.showArchived;
+      renderSessions();
+    }
     
     // ═══════════════════════════════════════════════════════════════
     // WEBSOCKET CONNECTION
@@ -1449,13 +1790,25 @@
     function handleChatEvent(data) {
       const { sessionKey, runId, state: runState, message } = data;
       
-      // Track active runs
+      // Track active runs and update agent status
       if (runState === 'streaming' || runState === 'started') {
         state.activeRuns.set(sessionKey, runId);
         state.sessionInputReady.set(sessionKey, false);
-      } else if (runState === 'done' || runState === 'error' || runState === 'aborted') {
+        setSessionStatus(sessionKey, 'thinking');
+      } else if (runState === 'done') {
         state.activeRuns.delete(sessionKey);
         state.sessionInputReady.set(sessionKey, true);
+        setSessionStatus(sessionKey, 'idle');
+        
+        // If viewing this session, update UI
+        if (state.currentSession?.key === sessionKey) {
+          state.isThinking = false;
+          updateSendButton();
+        }
+      } else if (runState === 'error' || runState === 'aborted') {
+        state.activeRuns.delete(sessionKey);
+        state.sessionInputReady.set(sessionKey, true);
+        setSessionStatus(sessionKey, runState === 'error' ? 'error' : 'idle');
         
         // If viewing this session, update UI
         if (state.currentSession?.key === sessionKey) {
@@ -1563,6 +1916,12 @@
         case 'connected':
           dot.style.background = 'var(--green)';
           text.textContent = 'Connected';
+          // Clear offline status for all sessions when reconnected
+          for (const key of Object.keys(state.sessionStatus)) {
+            if (state.sessionStatus[key] === 'offline') {
+              state.sessionStatus[key] = 'idle';
+            }
+          }
           break;
         case 'connecting':
           dot.style.background = 'var(--yellow)';
@@ -1571,8 +1930,47 @@
         case 'error':
           dot.style.background = 'var(--red)';
           text.textContent = 'Disconnected';
+          // Set all sessions to offline when disconnected
+          for (const key of Object.keys(state.sessionStatus)) {
+            state.sessionStatus[key] = 'offline';
+          }
+          renderSessions();
+          updateHeaderStatus();
           break;
       }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // AGENT STATUS
+    // ═══════════════════════════════════════════════════════════════
+    function setSessionStatus(key, status) {
+      state.sessionStatus[key] = status;
+      renderSessions();
+      renderSessionsGrid();
+      updateHeaderStatus();
+    }
+    
+    function getAgentStatus(key) {
+      return state.sessionStatus[key] || 'idle';
+    }
+    
+    function getStatusTooltip(status) {
+      switch (status) {
+        case 'idle': return 'Ready';
+        case 'thinking': return 'Processing...';
+        case 'error': return 'Last request failed';
+        case 'offline': return 'Disconnected';
+        default: return status;
+      }
+    }
+    
+    function updateHeaderStatus() {
+      const indicator = document.getElementById('headerStatusIndicator');
+      if (!indicator || !state.currentSession) return;
+      
+      const status = getAgentStatus(state.currentSession.key);
+      indicator.className = 'header-status ' + status;
+      indicator.setAttribute('data-tooltip', getStatusTooltip(status));
     }
     
     // ═══════════════════════════════════════════════════════════════
@@ -1630,6 +2028,13 @@
         console.log('[Sharp] Sessions result:', result);
         if (result?.sessions) {
           state.sessions = result.sessions;
+          // Initialize status for new sessions
+          for (const s of state.sessions) {
+            if (!state.sessionStatus[s.key]) {
+              // Check if actively running, otherwise default to idle
+              state.sessionStatus[s.key] = state.activeRuns.has(s.key) ? 'thinking' : 'idle';
+            }
+          }
           renderSessions();
           renderSessionsGrid();
         }
@@ -1762,25 +2167,77 @@
     // ═══════════════════════════════════════════════════════════════
     function renderSessions() {
       const container = document.getElementById('sessionsList');
+      const archivedToggle = document.getElementById('showArchivedToggle');
       
-      if (state.sessions.length === 0) {
-        container.innerHTML = `<div style="padding: 16px; color: var(--text-dim); font-size: 0.85rem;">No active sessions</div>`;
+      // Count archived sessions
+      const archivedCount = state.sessions.filter(s => isSessionArchived(s.key)).length;
+      
+      // Show/hide archived toggle
+      if (archivedToggle) {
+        archivedToggle.style.display = archivedCount > 0 ? 'flex' : 'none';
+        archivedToggle.querySelector('input').checked = state.showArchived;
+      }
+      
+      // Filter and sort sessions
+      let displaySessions = state.sessions.filter(s => {
+        if (isSessionArchived(s.key) && !state.showArchived) return false;
+        return true;
+      });
+      
+      // Sort: pinned first, then by updatedAt
+      displaySessions.sort((a, b) => {
+        const aPinned = isSessionPinned(a.key);
+        const bPinned = isSessionPinned(b.key);
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
+      
+      if (displaySessions.length === 0) {
+        container.innerHTML = `<div style="padding: 16px; color: var(--text-dim); font-size: 0.85rem;">${state.showArchived ? 'No sessions' : 'No active sessions'}</div>`;
         return;
       }
       
-      container.innerHTML = state.sessions.map(s => {
+      container.innerHTML = displaySessions.map(s => {
         const isActive = state.currentSession && state.currentSession.key === s.key;
+        const isSelected = state.selectedSessions.has(s.key);
+        const agentStatus = getAgentStatus(s.key);
+        const tooltip = getStatusTooltip(agentStatus);
+        const isPinned = isSessionPinned(s.key);
+        const isArchived = isSessionArchived(s.key);
+        const clickHandler = state.multiSelectMode 
+          ? `toggleSessionSelection('${escapeHtml(s.key)}')`
+          : `openSession('${escapeHtml(s.key)}')`;
+        
         return `
-          <div class="item ${isActive ? 'active' : ''}" onclick="openSession('${escapeHtml(s.key)}')">
+          <div class="item ${isActive ? 'active' : ''} ${isArchived ? 'archived-session' : ''}" onclick="${clickHandler}">
+            <div class="session-checkbox ${isSelected ? 'checked' : ''}" data-key="${escapeHtml(s.key)}" onclick="toggleSessionSelection('${escapeHtml(s.key)}', event)"></div>
             <div class="item-icon">${getSessionIcon(s)}</div>
             <div class="item-content">
               <div class="item-name">${escapeHtml(getSessionName(s))}</div>
               <div class="item-meta">${escapeHtml(getSessionMeta(s))}</div>
             </div>
-            <div class="item-status ${getSessionStatus(s)}"></div>
+            <div class="session-actions">
+              <button class="session-action-btn ${isPinned ? 'pinned' : ''}" 
+                      onclick="event.stopPropagation(); togglePinSession('${escapeHtml(s.key)}')" 
+                      title="${isPinned ? 'Unpin' : 'Pin'}">
+                ${isPinned ? '★' : '☆'}
+              </button>
+              <button class="session-action-btn ${isArchived ? 'archived' : ''}" 
+                      onclick="event.stopPropagation(); toggleArchiveSession('${escapeHtml(s.key)}')" 
+                      title="${isArchived ? 'Unarchive' : 'Archive'}">
+                ${isArchived ? '📤' : '📥'}
+              </button>
+            </div>
+            <div class="agent-status ${agentStatus}" data-tooltip="${tooltip}"></div>
           </div>
         `;
       }).join('');
+      
+      // Update select all checkbox state
+      if (state.multiSelectMode) {
+        updateCheckboxStates();
+      }
     }
     
     function getSessionIcon(s) {
@@ -1904,6 +2361,7 @@
       document.getElementById('mainTitle').textContent = 'Dashboard';
       document.getElementById('mainSubtitle').textContent = '';
       document.getElementById('headerAction').style.display = 'none';
+      document.getElementById('headerStatusIndicator').style.display = 'none';
       
       renderSessions();
       updateMobileHeader();
@@ -1919,10 +2377,19 @@
       state.chatHistory = [];
       state.isThinking = state.activeRuns.has(key);
       
+      // Initialize session status if not set
+      if (!state.sessionStatus[key]) {
+        state.sessionStatus[key] = state.connected ? 'idle' : 'offline';
+      }
+      
       document.getElementById('overviewView').classList.remove('active');
       document.getElementById('chatView').classList.add('active');
       document.getElementById('mainTitle').textContent = getSessionName(session);
       document.getElementById('mainSubtitle').textContent = session.key;
+      
+      // Show header status indicator
+      document.getElementById('headerStatusIndicator').style.display = 'block';
+      updateHeaderStatus();
       
       document.getElementById('sessionKeyDisplay').textContent = session.key;
       document.getElementById('sessionModel').textContent = session.model?.split('/').pop() || 'unknown';
@@ -2011,6 +2478,8 @@
       
       if (!text || state.isThinking || !state.currentSession) return;
       
+      const sessionKey = state.currentSession.key;
+      
       input.value = '';
       input.style.height = 'auto';
       
@@ -2018,12 +2487,13 @@
       
       const thinkingEl = addChatMessage('assistant thinking', 'Thinking...');
       state.isThinking = true;
+      setSessionStatus(sessionKey, 'thinking');
       updateSendButton();
       
       try {
-        const idempotencyKey = `msg-${state.currentSession.key}-${Date.now()}`;
+        const idempotencyKey = `msg-${sessionKey}-${Date.now()}`;
         const result = await rpcCall('chat.send', {
-          sessionKey: state.currentSession.key,
+          sessionKey: sessionKey,
           message: text,
           idempotencyKey
         }, 130000);
@@ -2034,11 +2504,13 @@
           addChatMessage('assistant', result.reply);
         }
         
+        setSessionStatus(sessionKey, 'idle');
         refresh();
         
       } catch (err) {
         thinkingEl.remove();
         addChatMessage('system', `Error: ${err.message}`);
+        setSessionStatus(sessionKey, 'error');
       } finally {
         state.isThinking = false;
         updateSendButton();
@@ -2114,12 +2586,227 @@
       }
     }
     
+    // ═══════════════════════════════════════════════════════════════
+    // EXPORT
+    // ═══════════════════════════════════════════════════════════════
+    async function exportChatAsMarkdown() {
+      if (!state.currentSession) return;
+      
+      try {
+        // Fetch fresh history
+        const result = await rpcCall('chat.history', { 
+          sessionKey: state.currentSession.key, 
+          limit: 500 
+        });
+        const messages = result?.messages || [];
+        
+        if (messages.length === 0) {
+          alert('No messages to export');
+          return;
+        }
+        
+        // Build markdown
+        const sessionName = getSessionName(state.currentSession);
+        const timestamp = new Date().toISOString();
+        const dateStr = new Date().toISOString().split('T')[0];
+        
+        let md = `# Chat Export: ${sessionName}\n`;
+        md += `Exported: ${timestamp}\n\n`;
+        md += `---\n\n`;
+        
+        for (const msg of messages) {
+          const role = msg.role === 'user' ? 'User' : 'Assistant';
+          md += `## ${role}\n\n`;
+          
+          // Handle content
+          if (typeof msg.content === 'string') {
+            md += msg.content + '\n\n';
+          } else if (Array.isArray(msg.content)) {
+            for (const block of msg.content) {
+              if (block.type === 'text') {
+                md += block.text + '\n\n';
+              } else if (block.type === 'tool_use') {
+                md += `\`\`\`tool_call: ${block.name}\n`;
+                md += JSON.stringify(block.input, null, 2) + '\n';
+                md += `\`\`\`\n\n`;
+              } else if (block.type === 'tool_result') {
+                const content = typeof block.content === 'string' 
+                  ? block.content 
+                  : JSON.stringify(block.content, null, 2);
+                const preview = content.length > 500 
+                  ? content.slice(0, 500) + '...' 
+                  : content;
+                md += `\`\`\`tool_result\n${preview}\n\`\`\`\n\n`;
+              } else if (block.type === 'image') {
+                md += `[Image: ${block.source?.media_type || 'image'}]\n\n`;
+              }
+            }
+          }
+          
+          md += `---\n\n`;
+        }
+        
+        // Sanitize session key for filename
+        const safeKey = state.currentSession.key
+          .replace(/[^a-zA-Z0-9-_]/g, '-')
+          .replace(/-+/g, '-')
+          .slice(0, 50);
+        const filename = `chat-${safeKey}-${dateStr}.md`;
+        
+        // Trigger download
+        const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+      } catch (err) {
+        console.error('Export failed:', err);
+        alert('Export failed: ' + err.message);
+      }
+    }
+    
     function headerAction() {
       if (state.currentSession?.key === 'agent:main:main') {
         if (confirm('Start a new session? This will reset the conversation.')) {
           sendMessage('/new');
         }
       }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // MULTI-SELECT MODE
+    // ═══════════════════════════════════════════════════════════════
+    function enterMultiSelect() {
+      state.multiSelectMode = true;
+      state.selectedSessions.clear();
+      document.getElementById('sessionsList').classList.add('multi-select-mode');
+      document.getElementById('selectModeBtn').style.display = 'none';
+      updateBulkActionBar();
+      renderSessions();
+    }
+    
+    function exitMultiSelect() {
+      state.multiSelectMode = false;
+      state.selectedSessions.clear();
+      document.getElementById('sessionsList').classList.remove('multi-select-mode');
+      document.getElementById('selectModeBtn').style.display = '';
+      document.getElementById('bulkActionBar').classList.remove('visible');
+      renderSessions();
+    }
+    
+    function toggleSessionSelection(key, event) {
+      if (event) {
+        event.stopPropagation();
+      }
+      
+      if (state.selectedSessions.has(key)) {
+        state.selectedSessions.delete(key);
+      } else {
+        state.selectedSessions.add(key);
+      }
+      
+      updateBulkActionBar();
+      updateCheckboxStates();
+    }
+    
+    function toggleSelectAll() {
+      const mainSessions = state.sessions.filter(s => !s.key.includes(':subagent:'));
+      
+      if (state.selectedSessions.size === mainSessions.length) {
+        // Deselect all
+        state.selectedSessions.clear();
+      } else {
+        // Select all
+        mainSessions.forEach(s => state.selectedSessions.add(s.key));
+      }
+      
+      updateBulkActionBar();
+      updateCheckboxStates();
+    }
+    
+    function updateBulkActionBar() {
+      const bar = document.getElementById('bulkActionBar');
+      const count = state.selectedSessions.size;
+      
+      if (count > 0) {
+        bar.classList.add('visible');
+        document.getElementById('bulkCount').textContent = `${count} selected`;
+      } else {
+        bar.classList.remove('visible');
+      }
+    }
+    
+    function updateCheckboxStates() {
+      // Update individual checkboxes
+      document.querySelectorAll('.session-checkbox[data-key]').forEach(checkbox => {
+        const key = checkbox.dataset.key;
+        if (state.selectedSessions.has(key)) {
+          checkbox.classList.add('checked');
+        } else {
+          checkbox.classList.remove('checked');
+        }
+      });
+      
+      // Update select all checkbox
+      const mainSessions = state.sessions.filter(s => !s.key.includes(':subagent:'));
+      const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+      if (selectAllCheckbox) {
+        if (mainSessions.length > 0 && state.selectedSessions.size === mainSessions.length) {
+          selectAllCheckbox.classList.add('checked');
+        } else {
+          selectAllCheckbox.classList.remove('checked');
+        }
+      }
+    }
+    
+    async function bulkArchive() {
+      if (state.selectedSessions.size === 0) return;
+      
+      const count = state.selectedSessions.size;
+      if (!confirm(`Archive ${count} session${count > 1 ? 's' : ''}?`)) return;
+      
+      const keys = [...state.selectedSessions];
+      let archived = 0;
+      
+      for (const key of keys) {
+        try {
+          await rpcCall('sessions.archive', { sessionKey: key });
+          archived++;
+        } catch (err) {
+          console.error(`Failed to archive ${key}:`, err);
+        }
+      }
+      
+      exitMultiSelect();
+      await refresh();
+      
+      console.log(`[Sharp] Archived ${archived}/${count} sessions`);
+    }
+    
+    async function bulkPin() {
+      if (state.selectedSessions.size === 0) return;
+      
+      const keys = [...state.selectedSessions];
+      let pinned = 0;
+      
+      for (const key of keys) {
+        try {
+          await rpcCall('sessions.pin', { sessionKey: key, pinned: true });
+          pinned++;
+        } catch (err) {
+          console.error(`Failed to pin ${key}:`, err);
+        }
+      }
+      
+      exitMultiSelect();
+      await refresh();
+      
+      console.log(`[Sharp] Pinned ${pinned}/${keys.length} sessions`);
     }
     
     // ═══════════════════════════════════════════════════════════════
@@ -2153,6 +2840,8 @@
       
       container.innerHTML = mainSessions.map(s => {
         const preview = getMessagePreview(s);
+        const agentStatus = getAgentStatus(s.key);
+        const tooltip = getStatusTooltip(agentStatus);
         return `
           <div class="session-card" onclick="openSession('${escapeHtml(s.key)}')">
             <div class="card-top">
@@ -2161,7 +2850,7 @@
                 <div class="card-name">${escapeHtml(getSessionName(s))}</div>
                 <div class="card-desc">${escapeHtml(s.model?.split('/').pop() || 'unknown model')}</div>
               </div>
-              <div class="card-status-dot ${getSessionStatus(s)}"></div>
+              <div class="agent-status ${agentStatus}" data-tooltip="${tooltip}" style="width: 10px; height: 10px;"></div>
             </div>
             ${preview ? `<div class="card-preview">${escapeHtml(preview)}</div>` : ''}
             <div class="card-footer">
@@ -2241,6 +2930,8 @@
       
       container.innerHTML = subagents.map(s => {
         const preview = getMessagePreview(s);
+        const agentStatus = getAgentStatus(s.key);
+        const tooltip = getStatusTooltip(agentStatus);
         return `
           <div class="session-card" onclick="openSession('${escapeHtml(s.key)}')">
             <div class="card-top">
@@ -2249,7 +2940,7 @@
                 <div class="card-name">${escapeHtml(s.label || 'Sub-agent')}</div>
                 <div class="card-desc">${escapeHtml(s.model?.split('/').pop() || 'unknown')}</div>
               </div>
-              <div class="card-status-dot ${getSessionStatus(s)}"></div>
+              <div class="agent-status ${agentStatus}" data-tooltip="${tooltip}" style="width: 10px; height: 10px;"></div>
             </div>
             ${preview ? `<div class="card-preview">${escapeHtml(preview)}</div>` : ''}
             <div class="card-footer">
@@ -2288,8 +2979,12 @@
     // KEYBOARD SHORTCUTS
     // ═══════════════════════════════════════════════════════════════
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && state.currentView === 'chat') {
-        showOverview();
+      if (e.key === 'Escape') {
+        if (state.multiSelectMode) {
+          exitMultiSelect();
+        } else if (state.currentView === 'chat') {
+          showOverview();
+        }
       }
     });
     
