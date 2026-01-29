@@ -100,13 +100,21 @@
     }
     .section-action:hover { background: var(--bg-hover); color: var(--accent); }
     
-    /* Session pin/archive icons */
+    /* Session pin/archive icons - overlay on hover */
     .session-actions {
+      position: absolute;
+      right: 30px;
+      top: 50%;
+      transform: translateY(-50%);
       display: flex;
       gap: 2px;
       opacity: 0;
       transition: opacity 0.15s;
+      background: linear-gradient(90deg, transparent, var(--bg-secondary) 20%);
+      padding-left: 20px;
+      padding-right: 4px;
     }
+    .item { position: relative; }
     .item:hover .session-actions { opacity: 1; }
     
     .session-action-btn {
