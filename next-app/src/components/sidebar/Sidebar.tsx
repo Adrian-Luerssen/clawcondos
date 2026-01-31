@@ -142,7 +142,7 @@ export function Sidebar(): React.ReactElement {
           )}
         </div>
         <div className="text-[10px] text-[var(--text-muted)] text-center mt-1">
-          ui/polish-vanilla
+          v2
         </div>
       </div>
     </aside>
