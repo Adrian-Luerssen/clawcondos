@@ -41,13 +41,16 @@ export function KbPageClient({ hasKb, tree, docs }: KbPageClientProps) {
             type="button"
             aria-label="Toggle sidebar"
             onClick={() => setIsMobileOpen((prev) => !prev)}
-            className="md:hidden h-11 w-11 inline-flex items-center justify-center rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] transition-colors"
+            className="md:hidden h-11 w-11 inline-flex items-center justify-center rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] active:bg-[var(--bg-active)] transition-colors"
           >
             <span className="text-lg">☰</span>
           </button>
-          <h1 className="text-xl font-semibold tracking-tight">Knowledge Base</h1>
-          <span className="text-sm text-[var(--text-dim)]">
+          <h1 className="text-lg sm:text-xl font-semibold tracking-tight truncate">Knowledge Base</h1>
+          <span className="text-sm text-[var(--text-dim)] hidden sm:inline">
             {docs.length} documents
+          </span>
+          <span className="text-sm text-[var(--text-dim)] sm:hidden">
+            {docs.length} docs
           </span>
         </header>
 
@@ -79,19 +82,19 @@ export function KbPageClient({ hasKb, tree, docs }: KbPageClientProps) {
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-4">
                   Recent Documents
                 </h2>
-                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                   {recentDocs.map((doc) => (
                     <Link
                       key={doc.slug}
                       href={`/kb/${doc.slug}`}
-                      className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] p-4 min-h-[44px] hover:border-[var(--accent)] hover:bg-[var(--bg-hover)] transition-all group"
+                      className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] p-4 min-h-[56px] hover:border-[var(--accent)] hover:bg-[var(--bg-hover)] active:bg-[var(--bg-active)] transition-all group"
                     >
                       <div className="flex items-start gap-3">
-                        <span className="text-xl opacity-60 group-hover:opacity-100 transition-opacity">
+                        <span className="text-xl opacity-60 group-hover:opacity-100 transition-opacity shrink-0">
                           📄
                         </span>
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-medium text-[var(--text)] truncate group-hover:text-[var(--accent)] transition-colors">
+                          <h3 className="font-medium text-[var(--text)] line-clamp-2 group-hover:text-[var(--accent)] transition-colors">
                             {doc.title}
                           </h3>
                           {doc.type && (
@@ -121,7 +124,7 @@ export function KbPageClient({ hasKb, tree, docs }: KbPageClientProps) {
               {/* By type */}
               {Object.entries(docsByType).map(([type, typeDocs]) => (
                 <section key={type}>
-                  <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-4 capitalize">
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3 md:mb-4 capitalize">
                     {type}s ({typeDocs.length})
                   </h2>
                   <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] divide-y divide-[var(--border-subtle)]">
@@ -129,14 +132,14 @@ export function KbPageClient({ hasKb, tree, docs }: KbPageClientProps) {
                       <Link
                         key={doc.slug}
                         href={`/kb/${doc.slug}`}
-                        className="flex items-center gap-3 px-4 py-3 min-h-[44px] hover:bg-[var(--bg-hover)] transition-colors group"
+                        className="flex items-center gap-3 px-3 sm:px-4 py-3 min-h-[52px] hover:bg-[var(--bg-hover)] active:bg-[var(--bg-active)] transition-colors group"
                       >
-                        <span className="opacity-60">📄</span>
-                        <span className="flex-1 truncate text-[var(--text-secondary)] group-hover:text-[var(--text)]">
+                        <span className="opacity-60 shrink-0">📄</span>
+                        <span className="flex-1 min-w-0 text-[var(--text-secondary)] group-hover:text-[var(--text)] line-clamp-2 sm:truncate">
                           {doc.title}
                         </span>
                         {doc.tags && doc.tags.length > 0 && (
-                          <div className="flex gap-1 shrink-0">
+                          <div className="hidden sm:flex gap-1 shrink-0">
                             {doc.tags.slice(0, 2).map((tag) => (
                               <span
                                 key={tag}
@@ -147,6 +150,7 @@ export function KbPageClient({ hasKb, tree, docs }: KbPageClientProps) {
                             ))}
                           </div>
                         )}
+                        <span className="text-xs text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0">→</span>
                       </Link>
                     ))}
                   </div>

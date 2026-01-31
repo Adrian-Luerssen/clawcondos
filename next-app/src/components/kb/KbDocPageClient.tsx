@@ -57,23 +57,24 @@ export function KbDocPageClient({
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="h-[60px] bg-[var(--bg-panel)] border-b border-[var(--border-subtle)] flex items-center px-4 md:px-6 gap-3 shrink-0">
+        <header className="h-[60px] bg-[var(--bg-panel)] border-b border-[var(--border-subtle)] flex items-center px-4 md:px-6 gap-2 md:gap-3 shrink-0">
           <button
             type="button"
             aria-label="Toggle sidebar"
             onClick={() => setIsMobileOpen((prev) => !prev)}
-            className="md:hidden h-11 w-11 inline-flex items-center justify-center rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] transition-colors"
+            className="md:hidden h-11 w-11 inline-flex items-center justify-center rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] active:bg-[var(--bg-active)] transition-colors shrink-0"
           >
             <span className="text-lg">☰</span>
           </button>
-          <nav className="flex items-center gap-2 text-sm text-[var(--text-dim)] flex-1 overflow-x-auto whitespace-nowrap">
-            <Link href="/kb" className="hover:text-[var(--accent)] transition-colors">
-              Knowledge Base
+          <nav className="flex items-center gap-1.5 md:gap-2 text-sm text-[var(--text-dim)] flex-1 overflow-x-auto whitespace-nowrap scrollbar-none">
+            <Link href="/kb" className="hover:text-[var(--accent)] active:text-[var(--accent)] transition-colors py-1 shrink-0">
+              <span className="hidden sm:inline">Knowledge Base</span>
+              <span className="sm:hidden">KB</span>
             </Link>
             {slugParts.slice(0, -1).map((part, i) => (
-              <span key={`${part}-${i}`} className="flex items-center gap-2">
-                <span>/</span>
-                <span className="capitalize">{part}</span>
+              <span key={`${part}-${i}`} className="flex items-center gap-1.5 md:gap-2 shrink-0">
+                <span className="opacity-50">/</span>
+                <span className="capitalize max-w-[100px] truncate">{part}</span>
               </span>
             ))}
           </nav>

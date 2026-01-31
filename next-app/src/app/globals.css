@@ -156,23 +156,41 @@ body {
    Knowledge Base - Wiki Links & Prose
    ═══════════════════════════════════════════════════════════════ */
 
-/* Wiki links */
+/* Wiki links - touch friendly */
 .wiki-link {
   color: var(--accent);
   text-decoration: none;
   border-bottom: 1px dashed var(--accent-muted);
   transition: all var(--transition-fast);
+  /* Larger touch target on mobile */
+  padding: 2px 0;
+  margin: -2px 0;
+  display: inline;
 }
 
-.wiki-link:hover {
+.wiki-link:hover,
+.wiki-link:active {
   border-bottom-style: solid;
   border-bottom-color: var(--accent);
+}
+
+.wiki-link:active {
+  background: var(--accent-muted);
+  border-radius: 2px;
 }
 
 .wiki-link.broken {
   color: var(--red);
   border-bottom-color: var(--red-dim);
   cursor: not-allowed;
+}
+
+@media (max-width: 767px) {
+  .wiki-link {
+    /* Larger touch target on mobile */
+    padding: 4px 2px;
+    margin: -4px -2px;
+  }
 }
 
 /* Prose typography */
@@ -295,9 +313,8 @@ body {
    Mobile Responsive Styles
    ═══════════════════════════════════════════════════════════════ */
 
-/* Ensure tables and code blocks scroll horizontally on mobile */
-.prose pre,
-.prose table {
+/* Ensure code blocks scroll horizontally on mobile */
+.prose pre {
   display: block;
   max-width: 100%;
   overflow-x: auto;
@@ -305,10 +322,50 @@ body {
 }
 
 /* Table wrapper for better mobile scrolling */
-.prose table {
+.prose .table-wrapper {
   display: block;
-  width: max-content;
-  min-width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 1.5rem 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.prose .table-wrapper table {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+
+.prose table {
+  display: table;
+  width: 100%;
+  min-width: max-content;
+}
+
+/* Scroll indicator gradient for tables on mobile */
+@media (max-width: 767px) {
+  .prose .table-wrapper {
+    position: relative;
+  }
+  
+  .prose .table-wrapper::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 20px;
+    background: linear-gradient(to right, transparent, var(--bg-panel));
+    pointer-events: none;
+    opacity: 0.8;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  }
+  
+  .prose .table-wrapper::-webkit-scrollbar {
+    height: 4px;
+  }
 }
 
 @media (max-width: 767px) {
@@ -371,5 +428,71 @@ body {
   .prose td {
     padding: 0.625rem 0.5rem;
     font-size: 0.875rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Mobile Touch Enhancements
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Tap highlight for interactive elements */
+@media (hover: none) and (pointer: coarse) {
+  a, button {
+    -webkit-tap-highlight-color: var(--accent-muted);
+  }
+  
+  /* Active states for touch feedback */
+  .prose a:active:not(.wiki-link) {
+    background: var(--accent-muted);
+    border-radius: 2px;
+  }
+}
+
+/* Safe area insets for notched devices */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Prevent text selection on interactive elements */
+button, [role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Smooth scrolling for all scrollable containers */
+.overflow-y-auto,
+.overflow-x-auto {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Hide scrollbar utility */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* List items - stack nicely on mobile */
+@media (max-width: 767px) {
+  .prose ul, .prose ol {
+    padding-left: 1rem;
+  }
+  
+  .prose li {
+    margin-bottom: 0.5rem;
+    line-height: 1.6;
+  }
+  
+  /* Nested lists */
+  .prose li ul,
+  .prose li ol {
+    margin-top: 0.5rem;
+    margin-bottom: 0;
   }
 }
