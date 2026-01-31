@@ -137,12 +137,7 @@ export function Sidebar(): React.ReactElement {
         <div className="flex items-center gap-2 text-xs text-[var(--text-dim)]">
           <span className={`w-2 h-2 rounded-full ${getStatusColor()}`} />
           <span>{getStatusText()}</span>
-          {isConnected && (
-            <span className="ml-auto text-[var(--text-muted)]">v2.0</span>
-          )}
-        </div>
-        <div className="text-[10px] text-[var(--text-muted)] text-center mt-1">
-          v2
+          <span className="ml-auto text-[10px] text-[var(--text-muted)]">v2</span>
         </div>
       </div>
     </aside>
