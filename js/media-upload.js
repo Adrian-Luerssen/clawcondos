@@ -183,6 +183,48 @@ const MediaUpload = (() => {
     });
   }
 
+  // Convert ArrayBuffer/Uint8Array to base64 (browser-safe)
+  function bytesToBase64(bytes) {
+    const chunkSize = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, chunk);
+    }
+    return btoa(binary);
+  }
+
+  async function fileToBase64(file) {
+    const buf = await file.arrayBuffer();
+    return bytesToBase64(new Uint8Array(buf));
+  }
+
+  /**
+   * Build OpenClaw-native chat.send attachments.
+   * Returns: [{ mimeType, fileName, content: <base64> }]
+   */
+  async function buildGatewayAttachments() {
+    const out = [];
+    for (const f of pendingFiles) {
+      if (f.status !== 'pending') continue;
+      try {
+        const b64 = await fileToBase64(f.file);
+        out.push({
+          type: f.fileType,
+          mimeType: f.file.type,
+          fileName: f.file.name,
+          content: b64,
+        });
+      } catch (err) {
+        f.status = 'error';
+        renderPreview();
+        throw err;
+      }
+    }
+    return out;
+  }
+
+  // Legacy upload methods kept for now but unused
   async function uploadAllPending(sessionKey) {
     const toUpload = pendingFiles.filter(f => f.status === 'pending');
     const results = [];
@@ -392,6 +434,7 @@ const MediaUpload = (() => {
     clearFiles,
     hasPendingFiles,
     getPendingFiles,
+    buildGatewayAttachments,
     uploadAllPending,
     getUploadedUrls,
     showDropOverlay,

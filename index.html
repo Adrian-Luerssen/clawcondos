@@ -2698,45 +2698,32 @@
       input.value = '';
       input.style.height = 'auto';
       
-      // Handle media uploads
+      // Handle OpenClaw-native attachments (chat.send.attachments)
       let finalMessage = text;
+      let attachments = undefined;
+
       if (hasMedia) {
         try {
-          // Upload all pending files
-          const results = await MediaUpload.uploadAllPending(sessionKey);
-          const uploaded = MediaUpload.getUploadedUrls();
-          
-          if (uploaded.length > 0) {
-            // Format media references
-            const mediaRefs = uploaded.map(m => {
-              if (m.type === 'image') {
-                return `![${m.name}](${m.url})`;
-              } else if (m.type === 'audio') {
-                return `[🎵 ${m.name}](${m.url})`;
-              }
-              return `[${m.name}](${m.url})`;
-            }).join('\n');
-            
-            // Combine with text
-            finalMessage = text ? `${mediaRefs}\n\n${text}` : mediaRefs;
+          attachments = await MediaUpload.buildGatewayAttachments();
+          // Optional: show a simple placeholder in the chat log (we don't embed base64)
+          if (!finalMessage) {
+            const files = MediaUpload.getPendingFiles();
+            finalMessage = files.map(f => `[attachment: ${f.file.name}]`).join('\n');
           }
-          
-          // Clear uploaded files
           MediaUpload.clearFiles();
-          
         } catch (err) {
-          addChatMessage('system', `Upload error: ${err.message}`);
+          addChatMessage('system', `Attachment prep error: ${err.message}`);
           return;
         }
       }
-      
-      if (finalMessage) {
-        addChatMessage('user', finalMessage);
-        await processMessage(finalMessage, sessionKey);
+
+      if (finalMessage || (attachments && attachments.length > 0)) {
+        addChatMessage('user', finalMessage || '[attachment]');
+        await processMessage(finalMessage || '', sessionKey, attachments);
       }
     }
     
-    async function processMessage(text, sessionKey) {
+    async function processMessage(text, sessionKey, attachments) {
       state.isThinking = true;
       setSessionStatus(sessionKey, 'thinking');
       updateSendButton();
@@ -2746,6 +2733,7 @@
         const result = await rpcCall('chat.send', {
           sessionKey: sessionKey,
           message: text,
+          attachments: attachments,
           idempotencyKey
         }, 130000);
         
