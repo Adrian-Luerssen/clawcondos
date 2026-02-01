@@ -2534,7 +2534,7 @@
           const text = extractText(m.content);
           if (!text) return '';
           const timeHtml = m.timestamp ? `<div class="message-time">${formatMessageTime(new Date(m.timestamp))}</div>` : '';
-          return `<div class="message user"><div class="message-content">${escapeHtml(text)}</div>${timeHtml}</div>`;
+          return `<div class="message user"><div class="message-content">${formatMessage(text)}</div>${timeHtml}</div>`;
         } else if (m.role === 'assistant') {
           const text = extractText(m.content);
           if (!text) return '';
@@ -2793,7 +2793,8 @@
       
       // Format content
       let contentHtml;
-      if (role === 'assistant' && !role.includes('thinking')) {
+      const shouldFormat = role.startsWith('assistant') || role.startsWith('user');
+      if (shouldFormat && !role.includes('thinking')) {
         contentHtml = formatMessage(content);
       } else {
         contentHtml = escapeHtml(content);
@@ -2838,12 +2839,107 @@
       }
     }
     
+    const AUDIO_EXTS = ['.mp3', '.wav', '.ogg', '.webm', '.m4a', '.mp4'];
+
+    function sanitizeMediaUrl(rawUrl) {
+      if (!rawUrl) return null;
+      const trimmed = rawUrl.trim();
+
+      if (trimmed.startsWith('/apps/uploads/')) {
+        return trimmed;
+      }
+
+      if (trimmed.startsWith('/uploads/')) {
+        return `/apps${trimmed}`;
+      }
+
+      if (/^https?:\/\//i.test(trimmed)) {
+        try {
+          const parsed = new URL(trimmed);
+          if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+            return parsed.href;
+          }
+        } catch (err) {
+          return null;
+        }
+      }
+
+      return null;
+    }
+
+    function isAudioName(name) {
+      if (!name) return false;
+      const clean = name.split('?')[0].split('#')[0].toLowerCase();
+      return AUDIO_EXTS.some(ext => clean.endsWith(ext));
+    }
+
+    function tokenizeMediaMarkdown(text) {
+      const tokens = [];
+      const addToken = (html) => {
+        const token = `@@MEDIA_${tokens.length}@@`;
+        tokens.push(html);
+        return token;
+      };
+
+      let processed = text;
+
+      const audioReplacement = (match, url) => {
+        const safeUrl = sanitizeMediaUrl(url);
+        if (!safeUrl) return match;
+        if (!isAudioName(safeUrl)) return match;
+        return addToken(`<audio class="chat-audio" controls src="${escapeHtml(safeUrl)}"></audio>`);
+      };
+
+      processed = processed.replace(/!\[audio[^\]]*\]\(([^)]+)\)/gi, audioReplacement);
+      processed = processed.replace(/!audio\(([^)]+)\)/gi, audioReplacement);
+
+      processed = processed.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, altText, url) => {
+        const safeUrl = sanitizeMediaUrl(url);
+        if (!safeUrl) return match;
+        const safeAlt = escapeHtml(altText || '');
+        return addToken(`<img class="chat-image" src="${escapeHtml(safeUrl)}" alt="${safeAlt}" loading="lazy">`);
+      });
+
+      // Audio links: [label](url)
+      processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label, url) => {
+        const safeUrl = sanitizeMediaUrl(url);
+        if (!safeUrl) return match;
+        if (isAudioName(safeUrl)) {
+          return addToken(`<audio class="chat-audio" controls src="${escapeHtml(safeUrl)}"></audio>`);
+        }
+        return addToken(`<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`);
+      });
+
+      // Attachment placeholders: [attachment: filename]
+      processed = processed.replace(/\[attachment:\s*([^\]]+)\]/gi, (match, name) => {
+        const trimmed = name.trim();
+        if (isAudioName(trimmed)) {
+          const safeUrl = sanitizeMediaUrl(trimmed);
+          if (safeUrl) {
+            return addToken(`<audio class="chat-audio" controls src="${escapeHtml(safeUrl)}"></audio>`);
+          }
+          return addToken(`<span class="chat-attachment audio">🎵 ${escapeHtml(trimmed)}</span>`);
+        }
+        return addToken(`<span class="chat-attachment">📎 ${escapeHtml(trimmed)}</span>`);
+      });
+
+      return { processed, tokens };
+    }
+    
     function formatMessage(text) {
-      return escapeHtml(text)
+      const { processed, tokens } = tokenizeMediaMarkdown(text);
+      let html = escapeHtml(processed)
         .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
         .replace(/`([^`]+)`/g, '<code>$1</code>')
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
         .replace(/\n/g, '<br>');
+      
+      tokens.forEach((tokenHtml, idx) => {
+        html = html.replace(`@@MEDIA_${idx}@@`, tokenHtml);
+      });
+      
+      return html;
     }
     
     function escapeHtml(text) {

@@ -1398,6 +1398,8 @@ body {
   background: var(--bg);
 }
 
+/* (deduped) */
+
 .chat-input-area {
   padding: var(--space-lg) var(--space-xl);
   border-top: 1px solid var(--border-subtle);
@@ -3473,4 +3475,33 @@ a:focus-visible {
   .kb-recent {
     grid-template-columns: 1fr;
   }
+}
+
+.chat-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  display: block;
+  margin: 6px 0;
+}
+
+.chat-audio {
+  width: 100%;
+  max-width: 420px;
+  margin: 6px 0;
+}
+
+.chat-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  font-size: 0.85em;
+}
+
+.chat-attachment.audio {
+  color: var(--accent);
 }
