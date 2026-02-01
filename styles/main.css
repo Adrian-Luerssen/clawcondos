@@ -1408,6 +1408,7 @@ body {
   display: flex; 
   gap: var(--space-md);
   align-items: flex-end;
+  position: relative;
 }
 
 .chat-input {
@@ -1594,6 +1595,86 @@ body {
 .stop-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+/* Mic button for audio recording */
+.mic-btn {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  width: 48px;
+  height: 48px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+.mic-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mic-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.mic-btn.recording {
+  background: var(--red);
+  border-color: var(--red);
+  color: white;
+  animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+.mic-btn.recording:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+@keyframes pulse-recording {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(248, 113, 113, 0); }
+}
+
+/* Recording timer display */
+.recording-timer {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: var(--red);
+  color: white;
+  padding: 4px 12px;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  display: none;
+  align-items: center;
+  gap: 6px;
+  box-shadow: var(--shadow-md);
+}
+
+.recording-timer.visible {
+  display: flex;
+}
+
+.recording-timer::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: white;
+  border-radius: 50%;
+  animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 /* Message queue indicator */
@@ -2556,6 +2637,12 @@ body {
     border-radius: var(--radius-lg);
   }
 
+  .mic-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-lg);
+  }
+
   .send-btn {
     width: 44px;
     height: 44px;
@@ -2729,6 +2816,11 @@ body {
   }
   
   .send-btn { 
+    width: 40px; 
+    height: 40px; 
+  }
+  
+  .mic-btn { 
     width: 40px; 
     height: 40px; 
   }
