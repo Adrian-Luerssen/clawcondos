@@ -1,0 +1,404 @@
+/**
+ * Sharp Media Upload Module
+ * Handles image and audio uploads for chat
+ * 
+ * Architecture:
+ * - MediaUploader: Core upload logic
+ * - MediaPreview: UI for showing pending attachments
+ * - Integrates with chat input via events
+ */
+
+const MediaUpload = (() => {
+  // ═══════════════════════════════════════════════════════════════
+  // CONFIGURATION
+  // ═══════════════════════════════════════════════════════════════
+  const CONFIG = {
+    uploadEndpoint: '/media-upload/upload',
+    maxFileSize: 20 * 1024 * 1024, // 20MB (matches server)
+    maxFiles: 5,
+    allowedTypes: {
+      image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+      audio: ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp4']
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // STATE
+  // ═══════════════════════════════════════════════════════════════
+  let pendingFiles = []; // { id, file, previewUrl, status: 'pending'|'uploading'|'done'|'error', uploadedUrl, progress }
+  let dropOverlayVisible = false;
+
+  // ═══════════════════════════════════════════════════════════════
+  // UTILITIES
+  // ═══════════════════════════════════════════════════════════════
+  function generateId() {
+    return `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function getFileType(mimeType) {
+    if (CONFIG.allowedTypes.image.includes(mimeType)) return 'image';
+    if (CONFIG.allowedTypes.audio.includes(mimeType)) return 'audio';
+    return null;
+  }
+
+  function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function validateFile(file) {
+    const fileType = getFileType(file.type);
+    if (!fileType) {
+      return { valid: false, error: `Unsupported file type: ${file.type || 'unknown'}` };
+    }
+    if (file.size > CONFIG.maxFileSize) {
+      return { valid: false, error: `File too large: ${formatFileSize(file.size)} (max ${formatFileSize(CONFIG.maxFileSize)})` };
+    }
+    if (pendingFiles.length >= CONFIG.maxFiles) {
+      return { valid: false, error: `Maximum ${CONFIG.maxFiles} files allowed` };
+    }
+    return { valid: true, fileType };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // FILE MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════
+  function addFile(file) {
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      showError(validation.error);
+      return null;
+    }
+
+    const id = generateId();
+    const previewUrl = validation.fileType === 'image' ? URL.createObjectURL(file) : null;
+    
+    const fileEntry = {
+      id,
+      file,
+      fileType: validation.fileType,
+      previewUrl,
+      status: 'pending',
+      uploadedUrl: null,
+      progress: 0
+    };
+
+    pendingFiles.push(fileEntry);
+    renderPreview();
+    emit('filesChanged', { files: pendingFiles });
+    
+    return fileEntry;
+  }
+
+  function removeFile(id) {
+    const idx = pendingFiles.findIndex(f => f.id === id);
+    if (idx !== -1) {
+      const file = pendingFiles[idx];
+      if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
+      pendingFiles.splice(idx, 1);
+      renderPreview();
+      emit('filesChanged', { files: pendingFiles });
+    }
+  }
+
+  function clearFiles() {
+    pendingFiles.forEach(f => {
+      if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+    });
+    pendingFiles = [];
+    renderPreview();
+    emit('filesChanged', { files: pendingFiles });
+  }
+
+  function hasPendingFiles() {
+    return pendingFiles.length > 0;
+  }
+
+  function getPendingFiles() {
+    return [...pendingFiles];
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // UPLOAD
+  // ═══════════════════════════════════════════════════════════════
+  async function uploadFile(fileEntry, sessionKey) {
+    fileEntry.status = 'uploading';
+    fileEntry.progress = 0;
+    renderPreview();
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+      
+      formData.append('file', fileEntry.file);
+      formData.append('sessionKey', sessionKey || 'unknown');
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          fileEntry.progress = Math.round((e.loaded / e.total) * 100);
+          renderPreview();
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.ok) {
+              fileEntry.status = 'done';
+              fileEntry.uploadedUrl = response.url;
+              fileEntry.progress = 100;
+              renderPreview();
+              resolve(response);
+            } else {
+              throw new Error(response.error || 'Upload failed');
+            }
+          } catch (e) {
+            fileEntry.status = 'error';
+            renderPreview();
+            reject(new Error('Invalid server response'));
+          }
+        } else {
+          fileEntry.status = 'error';
+          renderPreview();
+          reject(new Error(`Upload failed: ${xhr.status}`));
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        fileEntry.status = 'error';
+        renderPreview();
+        reject(new Error('Network error'));
+      });
+
+      xhr.open('POST', CONFIG.uploadEndpoint);
+      xhr.send(formData);
+    });
+  }
+
+  async function uploadAllPending(sessionKey) {
+    const toUpload = pendingFiles.filter(f => f.status === 'pending');
+    const results = [];
+
+    for (const fileEntry of toUpload) {
+      try {
+        const result = await uploadFile(fileEntry, sessionKey);
+        results.push({ id: fileEntry.id, success: true, ...result });
+      } catch (err) {
+        results.push({ id: fileEntry.id, success: false, error: err.message });
+      }
+    }
+
+    return results;
+  }
+
+  function getUploadedUrls() {
+    return pendingFiles
+      .filter(f => f.status === 'done' && f.uploadedUrl)
+      .map(f => ({
+        url: f.uploadedUrl,
+        type: f.fileType,
+        name: f.file.name
+      }));
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // UI RENDERING
+  // ═══════════════════════════════════════════════════════════════
+  function renderPreview() {
+    let container = document.getElementById('mediaPreviewContainer');
+    
+    if (pendingFiles.length === 0) {
+      if (container) container.innerHTML = '';
+      return;
+    }
+
+    if (!container) {
+      console.warn('Media preview container not found');
+      return;
+    }
+
+    container.innerHTML = pendingFiles.map(f => {
+      const isImage = f.fileType === 'image';
+      const statusClass = f.status;
+      const progressBar = f.status === 'uploading' 
+        ? `<div class="media-progress"><div class="media-progress-bar" style="width: ${f.progress}%"></div></div>`
+        : '';
+
+      if (isImage && f.previewUrl) {
+        return `
+          <div class="media-preview-item ${statusClass}" data-id="${f.id}">
+            <img src="${f.previewUrl}" alt="${f.file.name}">
+            <button class="media-remove-btn" onclick="MediaUpload.removeFile('${f.id}')" title="Remove">×</button>
+            ${progressBar}
+            ${f.status === 'error' ? '<div class="media-error">!</div>' : ''}
+          </div>
+        `;
+      } else {
+        // Audio file
+        const icon = f.fileType === 'audio' ? '🎵' : '📎';
+        return `
+          <div class="media-preview-item audio ${statusClass}" data-id="${f.id}">
+            <div class="media-audio-icon">${icon}</div>
+            <div class="media-audio-name">${f.file.name}</div>
+            <button class="media-remove-btn" onclick="MediaUpload.removeFile('${f.id}')" title="Remove">×</button>
+            ${progressBar}
+            ${f.status === 'error' ? '<div class="media-error">!</div>' : ''}
+          </div>
+        `;
+      }
+    }).join('');
+  }
+
+  function showDropOverlay(show) {
+    const overlay = document.getElementById('dropOverlay');
+    if (overlay) {
+      overlay.classList.toggle('visible', show);
+    }
+    dropOverlayVisible = show;
+  }
+
+  function showError(message) {
+    // Use existing notification system or console
+    if (window.showNotification) {
+      window.showNotification(message, 'error');
+    } else {
+      console.error('[MediaUpload]', message);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // EVENT HANDLERS
+  // ═══════════════════════════════════════════════════════════════
+  function handleFileSelect(event) {
+    const files = event.target.files;
+    if (!files) return;
+    
+    for (const file of files) {
+      addFile(file);
+    }
+    
+    // Reset input so same file can be selected again
+    event.target.value = '';
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!dropOverlayVisible) showDropOverlay(true);
+  }
+
+  function handleDragLeave(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    // Only hide if leaving the chat area entirely
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX;
+    const y = event.clientY;
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      showDropOverlay(false);
+    }
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    showDropOverlay(false);
+
+    const files = event.dataTransfer?.files;
+    if (!files) return;
+
+    for (const file of files) {
+      addFile(file);
+    }
+  }
+
+  function handlePaste(event) {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file && getFileType(file.type)) {
+          event.preventDefault();
+          addFile(file);
+        }
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // EVENT EMITTER
+  // ═══════════════════════════════════════════════════════════════
+  const listeners = {};
+
+  function on(event, callback) {
+    if (!listeners[event]) listeners[event] = [];
+    listeners[event].push(callback);
+  }
+
+  function off(event, callback) {
+    if (!listeners[event]) return;
+    listeners[event] = listeners[event].filter(cb => cb !== callback);
+  }
+
+  function emit(event, data) {
+    if (!listeners[event]) return;
+    listeners[event].forEach(cb => cb(data));
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // INITIALIZATION
+  // ═══════════════════════════════════════════════════════════════
+  function init() {
+    // Set up drag & drop on chat view
+    const chatView = document.getElementById('chatView');
+    if (chatView) {
+      chatView.addEventListener('dragover', handleDragOver);
+      chatView.addEventListener('dragleave', handleDragLeave);
+      chatView.addEventListener('drop', handleDrop);
+    }
+
+    // Set up paste handler on chat input
+    const chatInput = document.getElementById('chatInput');
+    if (chatInput) {
+      chatInput.addEventListener('paste', handlePaste);
+    }
+
+    // Set up file input
+    const fileInput = document.getElementById('mediaFileInput');
+    if (fileInput) {
+      fileInput.addEventListener('change', handleFileSelect);
+    }
+
+    console.log('[MediaUpload] Initialized');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // PUBLIC API
+  // ═══════════════════════════════════════════════════════════════
+  return {
+    init,
+    addFile,
+    removeFile,
+    clearFiles,
+    hasPendingFiles,
+    getPendingFiles,
+    uploadAllPending,
+    getUploadedUrls,
+    showDropOverlay,
+    on,
+    off,
+    // Expose config for debugging
+    get config() { return { ...CONFIG }; }
+  };
+})();
+
+// Auto-init when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => MediaUpload.init());
+} else {
+  MediaUpload.init();
+}

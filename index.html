@@ -15,6 +15,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   
   <link rel="stylesheet" href="/styles/main.css">
+  <link rel="stylesheet" href="/styles/media-upload.css">
 </head>
 <body>
   <!-- Toast container for notifications -->
@@ -224,6 +225,16 @@
           </button>
         </div>
         <div class="chat-messages" id="chatMessages"></div>
+        
+        <!-- Drop overlay for drag & drop -->
+        <div class="drop-overlay" id="dropOverlay">
+          <div class="drop-overlay-content">
+            <div class="drop-overlay-icon">📎</div>
+            <div class="drop-overlay-text">Drop files here</div>
+            <div class="drop-overlay-hint">Images and audio supported</div>
+          </div>
+        </div>
+        
         <div class="reconnect-overlay" id="reconnectOverlay">
           <div class="spinner"></div>
           <div class="reconnect-text">Reconnecting...</div>
@@ -236,7 +247,19 @@
             <span>queued</span>
             <button class="clear-queue" onclick="clearMessageQueue()" title="Clear queue">✕</button>
           </div>
+          
+          <!-- Media preview (shows pending uploads) -->
+          <div id="mediaPreviewContainer"></div>
+          
+          <!-- Hidden file input -->
+          <input type="file" id="mediaFileInput" accept="image/*,audio/*" multiple>
+          
           <div class="chat-input-wrapper">
+            <button class="attach-btn" onclick="document.getElementById('mediaFileInput').click()" title="Attach files">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
             <textarea 
               class="chat-input" 
               id="chatInput" 
@@ -2529,26 +2552,65 @@
     async function sendMessage() {
       const input = document.getElementById('chatInput');
       const text = input.value.trim();
+      const hasMedia = typeof MediaUpload !== 'undefined' && MediaUpload.hasPendingFiles();
       
-      if (!text || !state.currentSession) return;
+      // Need either text or media
+      if (!text && !hasMedia) return;
+      if (!state.currentSession) return;
       
       const sessionKey = state.currentSession.key;
       
-      // If agent is busy, queue the message
+      // If agent is busy, queue the message (text only for now)
       if (state.isThinking) {
-        state.messageQueue.push({ text, sessionKey });
-        updateQueueIndicator();
-        input.value = '';
-        input.style.height = 'auto';
-        addChatMessage('user queued', text);
+        if (text) {
+          state.messageQueue.push({ text, sessionKey });
+          updateQueueIndicator();
+          input.value = '';
+          input.style.height = 'auto';
+          addChatMessage('user queued', text);
+        }
         return;
       }
       
       input.value = '';
       input.style.height = 'auto';
       
-      addChatMessage('user', text);
-      await processMessage(text, sessionKey);
+      // Handle media uploads
+      let finalMessage = text;
+      if (hasMedia) {
+        try {
+          // Upload all pending files
+          const results = await MediaUpload.uploadAllPending(sessionKey);
+          const uploaded = MediaUpload.getUploadedUrls();
+          
+          if (uploaded.length > 0) {
+            // Format media references
+            const mediaRefs = uploaded.map(m => {
+              if (m.type === 'image') {
+                return `![${m.name}](${m.url})`;
+              } else if (m.type === 'audio') {
+                return `[🎵 ${m.name}](${m.url})`;
+              }
+              return `[${m.name}](${m.url})`;
+            }).join('\n');
+            
+            // Combine with text
+            finalMessage = text ? `${mediaRefs}\n\n${text}` : mediaRefs;
+          }
+          
+          // Clear uploaded files
+          MediaUpload.clearFiles();
+          
+        } catch (err) {
+          addChatMessage('system', `Upload error: ${err.message}`);
+          return;
+        }
+      }
+      
+      if (finalMessage) {
+        addChatMessage('user', finalMessage);
+        await processMessage(finalMessage, sessionKey);
+      }
     }
     
     async function processMessage(text, sessionKey) {
@@ -3142,5 +3204,8 @@
     
     init();
   </script>
+  
+  <!-- Media upload module -->
+  <script src="/js/media-upload.js"></script>
 </body>
 </html>
