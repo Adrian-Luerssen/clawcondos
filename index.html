@@ -123,70 +123,67 @@
        ═══════════════════════════════════════════════════════════════ -->
   <div class="modal-overlay hidden" id="organizeWizardModal">
     <div class="modal organize-wizard">
-      <!-- Header with progress -->
-      <div class="wizard-header">
-        <div class="wizard-header-top">
-          <h2 class="wizard-title">🗂️ Organize Sessions</h2>
-          <button class="wizard-close" onclick="closeOrganizeWizard()">✕</button>
+      <!-- Header -->
+      <div class="wiz-header">
+        <div class="wiz-header-left">
+          <h2 class="wiz-title">Organize Sessions</h2>
+          <div class="wiz-progress-text"><span id="wizardProgress">1 of 41</span> · <span id="wizardStats">0 organized</span></div>
         </div>
-        <div class="wizard-progress-section">
-          <div class="wizard-progress-bar">
-            <div class="wizard-progress-fill" id="wizardProgressBar"></div>
-          </div>
-          <div class="wizard-progress-text">
-            <span id="wizardProgress">1 of 41</span>
-            <span class="wizard-stats" id="wizardStats">0 organized · 0 skipped</span>
-          </div>
-        </div>
+        <button class="wiz-close" onclick="closeOrganizeWizard()">✕</button>
       </div>
       
-      <div class="wizard-body" id="wizardContent">
-        <!-- Session Card -->
-        <div class="wizard-session-card">
-          <div class="wizard-session-icon" id="wizardSessionIcon">💬</div>
-          <div class="wizard-session-details">
-            <div class="wizard-session-name" id="wizardSessionTitle">Session Title</div>
-            <div class="wizard-session-key" id="wizardSessionKey">agent:main:...</div>
+      <!-- Progress bar -->
+      <div class="wiz-progress-bar"><div class="wiz-progress-fill" id="wizardProgressBar"></div></div>
+      
+      <!-- Two Column Layout -->
+      <div class="wiz-columns" id="wizardContent">
+        <!-- LEFT: Session Info -->
+        <div class="wiz-left">
+          <div class="wiz-section-label">SESSION</div>
+          <div class="wiz-session-card">
+            <div class="wiz-session-icon" id="wizardSessionIcon">💬</div>
+            <div class="wiz-session-name" id="wizardSessionTitle">Session Title</div>
+          </div>
+          <div class="wiz-session-key" id="wizardSessionKey">agent:main:...</div>
+          
+          <div class="wiz-section-label" style="margin-top: 20px;">CONTENT PREVIEW</div>
+          <div class="wiz-content-box" id="wizardSummary">
+            Loading messages...
           </div>
         </div>
         
-        <!-- Topic Preview -->
-        <div class="wizard-topic" id="wizardSummary">
-          <div class="wizard-topic-label">Recent activity</div>
-          <div class="wizard-topic-text">Loading...</div>
-        </div>
-        
-        <!-- AI Recommendation -->
-        <div class="wizard-recommendation" id="wizardProposal">
-          <div class="wizard-rec-header">
-            <span class="wizard-rec-badge">✨ AI Suggestion</span>
+        <!-- RIGHT: Goal Assignment -->
+        <div class="wiz-right">
+          <div class="wiz-section-label">SUGGESTED GOAL</div>
+          <div class="wiz-goal-card" id="wizardProposal">
+            <div class="wiz-goal-icon">🎯</div>
+            <div class="wiz-goal-info" id="wizardProposedGoal">
+              <div class="wiz-goal-name">Analyzing...</div>
+              <div class="wiz-goal-reason"></div>
+            </div>
           </div>
-          <div class="wizard-rec-goal" id="wizardProposedGoal">
-            <div class="wizard-rec-title">Analyzing...</div>
-            <div class="wizard-rec-reason"></div>
+          
+          <!-- Actions -->
+          <div class="wiz-actions">
+            <button class="wiz-btn-accept" id="wizardAcceptBtn" onclick="acceptWizardProposal()">
+              ✓ Accept
+            </button>
+            <button class="wiz-btn-skip" onclick="skipWizardSession()">
+              Skip →
+            </button>
           </div>
-          <button class="wizard-accept-btn" id="wizardAcceptBtn" onclick="acceptWizardProposal()">
-            Accept & Continue →
+          
+          <button class="wiz-btn-change" onclick="showWizardGoalPicker()">
+            Choose different goal...
           </button>
-        </div>
-        
-        <!-- Alternative Actions -->
-        <div class="wizard-alternatives">
-          <button class="wizard-alt-btn" onclick="showWizardGoalPicker()">
-            📁 Choose different goal
-          </button>
-          <button class="wizard-alt-btn" onclick="skipWizardSession()">
-            ⏭️ Skip this session
-          </button>
-        </div>
-        
-        <!-- Goal Picker (hidden) -->
-        <div class="wizard-picker hidden" id="wizardGoalPicker">
-          <div class="wizard-picker-title">Select or create a goal</div>
-          <div class="wizard-picker-list" id="wizardGoalList"></div>
-          <div class="wizard-picker-new">
-            <input type="text" class="wizard-picker-input" id="wizardNewGoalTitle" placeholder="New goal name...">
-            <button class="wizard-picker-create" onclick="createGoalInWizard()">Create</button>
+          
+          <!-- Goal Picker (hidden) -->
+          <div class="wiz-picker hidden" id="wizardGoalPicker">
+            <div class="wiz-picker-list" id="wizardGoalList"></div>
+            <div class="wiz-picker-new">
+              <input type="text" class="wiz-picker-input" id="wizardNewGoalTitle" placeholder="Or create new...">
+              <button class="wiz-picker-create" onclick="createGoalInWizard()">+</button>
+            </div>
           </div>
         </div>
       </div>
@@ -2960,28 +2957,25 @@ If none fit well, include a suggestion with goalId:null and a proposed new goal 
       // Update progress
       document.getElementById('wizardProgress').textContent = `${idx + 1} of ${sessions.length}`;
       document.getElementById('wizardProgressBar').style.width = `${((idx + 1) / sessions.length) * 100}%`;
-      document.getElementById('wizardStats').textContent = `${state.wizardOrganized} organized · ${state.wizardSkipped} skipped`;
+      document.getElementById('wizardStats').textContent = `${state.wizardOrganized} done · ${state.wizardSkipped} skipped`;
       
       // Update session info
       document.getElementById('wizardSessionIcon').textContent = getSessionIcon(session);
       document.getElementById('wizardSessionTitle').textContent = sessionName;
       document.getElementById('wizardSessionKey').textContent = session.key;
       
-      // Update topic area
+      // Update content preview
       const summaryEl = document.getElementById('wizardSummary');
       if (summaryEl) {
-        summaryEl.innerHTML = `
-          <div class="wizard-topic-label">Recent activity</div>
-          <div class="wizard-topic-text">Loading...</div>
-        `;
+        summaryEl.innerHTML = 'Loading messages...';
       }
       
-      // Update recommendation area
+      // Update goal suggestion
       const proposalEl = document.getElementById('wizardProposedGoal');
       if (proposalEl) {
         proposalEl.innerHTML = `
-          <div class="wizard-rec-title">Analyzing session...</div>
-          <div class="wizard-rec-reason">Looking for the best goal match</div>
+          <div class="wiz-goal-name">Analyzing...</div>
+          <div class="wiz-goal-reason">Finding the best goal for this session</div>
         `;
       }
       
@@ -3022,12 +3016,15 @@ If none fit well, include a suggestion with goalId:null and a proposed new goal 
         console.log('Could not fetch history:', e);
       }
       
-      // Show summary
+      // Show summary - format nicely
       const summaryText = firstMessages || lastMessages || 'No messages found';
-      document.getElementById('wizardSummary').innerHTML = `
-        <div class="wizard-topic-label">Recent activity</div>
-        <div class="wizard-topic-text">${escapeHtml(summaryText.slice(0, 200))}${summaryText.length > 200 ? '...' : ''}</div>
-      `;
+      const formattedSummary = summaryText
+        .split(' | ')
+        .filter(s => s.trim())
+        .map(s => `• ${escapeHtml(s.slice(0, 100))}${s.length > 100 ? '...' : ''}`)
+        .slice(0, 5)
+        .join('<br>');
+      document.getElementById('wizardSummary').innerHTML = formattedSummary || 'No messages found';
       
       // Request AI proposal
       if (goals.length > 0) {
@@ -3141,20 +3138,20 @@ Response format:
       const isNew = !proposal.goalId || proposal.isNew;
       
       document.getElementById('wizardProposedGoal').innerHTML = `
-        <div class="wizard-rec-title">${isNew ? '✨ ' : '📁 '}${escapeHtml(title)}</div>
-        <div class="wizard-rec-reason">${escapeHtml(reason)}</div>
+        <div class="wiz-goal-name">${isNew ? '✨ ' : '📁 '}${escapeHtml(title)}</div>
+        <div class="wiz-goal-reason">${escapeHtml(reason)}</div>
       `;
       
       const acceptBtn = document.getElementById('wizardAcceptBtn');
-      acceptBtn.textContent = isNew ? 'Create & Continue →' : 'Accept & Continue →';
+      acceptBtn.textContent = isNew ? '✓ Create Goal' : '✓ Accept';
       acceptBtn.style.display = '';
     }
     
     function showWizardManualProposal() {
       state.wizardCurrentProposal = null;
       document.getElementById('wizardProposedGoal').innerHTML = `
-        <div class="wizard-rec-title" style="color: var(--text-dim);">No clear match found</div>
-        <div class="wizard-rec-reason">Choose a goal below or create a new one</div>
+        <div class="wiz-goal-name" style="color: var(--text-dim);">No clear match</div>
+        <div class="wiz-goal-reason">Choose a goal below or create new</div>
       `;
       document.getElementById('wizardAcceptBtn').style.display = 'none';
       showWizardGoalPicker();
