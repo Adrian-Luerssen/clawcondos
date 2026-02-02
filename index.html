@@ -3025,17 +3025,24 @@ If existing goal fits well: {"goalId":"the-id","title":"Goal Title","reason":"wh
 If new goal needed: {"goalId":null,"title":"Descriptive New Goal Name","reason":"why new goal is better","isNew":true}`;
 
         try {
+          if (!state.ws || !state.connected) {
+            throw new Error('WebSocket not connected');
+          }
           state.wizardPendingSessionKey = sessionKey;
+          console.log('[Wizard] Sending AI request with', goals.length, 'existing goals...');
           await sendChatMessage(message);
+          console.log('[Wizard] Request sent, waiting for response...');
           
           // Wait for response (timeout to manual)
           setTimeout(() => {
             if (state.wizardPendingSessionKey === sessionKey && !state.wizardCurrentProposal) {
+              console.log('[Wizard] Timeout - showing manual picker');
               showWizardManualProposal();
             }
           }, 10000);
           
         } catch (e) {
+          console.error('[Wizard] Error:', e);
           showWizardManualProposal();
         }
       } else {
@@ -3054,17 +3061,24 @@ Response format:
 {"goalId":null,"title":"Suggested Goal Name Based On Topic","reason":"why this fits","isNew":true}`;
 
         try {
+          if (!state.ws || !state.connected) {
+            throw new Error('WebSocket not connected');
+          }
           state.wizardPendingSessionKey = sessionKey;
+          console.log('[Wizard] Sending AI request for goal suggestion...');
           await sendChatMessage(message);
+          console.log('[Wizard] Request sent, waiting for response...');
           
           setTimeout(() => {
             if (state.wizardPendingSessionKey === sessionKey && !state.wizardCurrentProposal) {
-              state.wizardCurrentProposal = { goalId: null, title: 'New Goal', reason: 'Could not analyze', isNew: true };
+              console.log('[Wizard] Timeout - no response received');
+              state.wizardCurrentProposal = { goalId: null, title: 'New Goal', reason: 'AI timeout - suggest manually', isNew: true };
               showWizardProposal(state.wizardCurrentProposal);
             }
           }, 10000);
         } catch (e) {
-          state.wizardCurrentProposal = { goalId: null, title: 'New Goal', reason: 'Error analyzing', isNew: true };
+          console.error('[Wizard] Error:', e);
+          state.wizardCurrentProposal = { goalId: null, title: 'New Goal', reason: e.message || 'Error analyzing', isNew: true };
           showWizardProposal(state.wizardCurrentProposal);
         }
       }
