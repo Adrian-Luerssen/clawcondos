@@ -17,7 +17,6 @@
   <link rel="stylesheet" href="/styles/main.css?v=8">
   <link rel="stylesheet" href="/styles/media-upload.css">
   <link rel="stylesheet" href="/styles/voice-recorder.css">
-  <link rel="stylesheet" href="/styles/v2-views.css?v=1">
 </head>
 <body>
   <!-- Toast container for notifications -->
@@ -207,7 +206,7 @@
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
   <!-- ═══════════════════════════════════════════════════════════════
-       SIDEBAR v2 - Condos → Goals → Sessions
+       SIDEBAR
        ═══════════════════════════════════════════════════════════════ -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header" onclick="showOverview()">
@@ -216,90 +215,103 @@
     </div>
     
     <div class="sidebar-content">
-      <!-- Global Search -->
-      <div class="sidebar-search">
-        <div class="sidebar-search-wrapper">
-          <span class="sidebar-search-icon">🔍</span>
-          <input 
-            type="text" 
-            class="sidebar-search-input" 
-            id="sessionSearchInput"
-            placeholder="Search..."
-            oninput="handleSearchInput(this.value)"
-            onkeydown="handleSearchKeydown(event)"
-          >
-          <span class="sidebar-search-shortcut">⌘K</span>
+      <!-- Sessions -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Goals</span>
+          <div class="auto-archive-setting" title="Auto-archive inactive sessions">
+            <span>⏰</span>
+            <select id="autoArchiveSelect" onchange="setAutoArchiveDays(this.value)">
+              <option value="0.01">15m</option>
+              <option value="0.042">1h</option>
+              <option value="0.25">6h</option>
+              <option value="1">1d</option>
+              <option value="3">3d</option>
+              <option value="never">Off</option>
+            </select>
+          </div>
+          <label class="show-archived-toggle" id="showArchivedToggle" style="display: none;">
+            <input type="checkbox" onchange="toggleShowArchived()">
+            📦
+          </label>
+          <button class="section-action" id="markAllReadBtn" onclick="markAllSessionsRead()" title="Mark all read" style="display: none;">✓</button>
+          <button class="section-action" onclick="showCreateGoalModal()" title="New goal">＋</button>
+          <button class="section-action" id="selectModeBtn" onclick="enterMultiSelect()" title="Select sessions">☑</button>
+          <button class="section-action" onclick="refresh()" title="Refresh">↻</button>
         </div>
-      </div>
-      
-      <!-- Condos Section -->
-      <div class="section condos-section">
-        <div class="section-label" style="display: flex; align-items: center; justify-content: space-between;">
-          <span>Condos</span>
-          <div style="display: flex; gap: 4px;">
-            <button class="section-action" onclick="showNewGoalView()" title="New goal">🎯+</button>
-            <button class="section-action" onclick="showNewSessionView()" title="New session">💬+</button>
+        <!-- Search Box -->
+        <div id="goalsList" style="padding: 8px 12px 4px 12px;"></div>
+        <div class="session-search">
+          <div class="session-search-wrapper">
+            <span class="session-search-icon">🔍</span>
+            <input 
+              type="text" 
+              class="session-search-input" 
+              id="sessionSearchInput"
+              placeholder="Search sessions..."
+              oninput="handleSearchInput(this.value)"
+              onkeydown="handleSearchKeydown(event)"
+            >
+            <button class="session-search-clear" onclick="clearSearch()" title="Clear search">×</button>
+          </div>
+          <div class="session-search-hint">⌘K to focus</div>
+        </div>
+        <!-- Filters -->
+        <div class="session-filters" style="display: flex; gap: 8px; padding: 0 12px 8px 12px;">
+          <select id="filterChannel" onchange="setFilterChannel(this.value)" style="flex: 1; padding: 6px 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 12px; cursor: pointer;">
+            <option value="all">All channels</option>
+            <option value="telegram">📱 Telegram</option>
+            <option value="discord">🎮 Discord</option>
+            <option value="signal">💬 Signal</option>
+            <option value="whatsapp">📞 WhatsApp</option>
+            <option value="cron">⏰ Cron</option>
+            <option value="subagent">⚡ Subagent</option>
+          </select>
+          <select id="filterStatus" onchange="setFilterStatus(this.value)" style="flex: 1; padding: 6px 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 12px; cursor: pointer;">
+            <option value="all">All status</option>
+            <option value="running">🔴 Running</option>
+            <option value="unread">🟠 Unread</option>
+            <option value="error">🟡 Error</option>
+            <option value="recent">🟢 Recent</option>
+            <option value="idle">⚪ Idle</option>
+          </select>
+        </div>
+        <div class="bulk-action-bar" id="bulkActionBar">
+          <span class="bulk-count" id="bulkCount">0 selected</span>
+          <div class="bulk-actions">
+            <button class="bulk-btn" onclick="bulkArchive()">📦 Archive</button>
+            <button class="bulk-btn" onclick="bulkPin()">📌 Pin</button>
+            <button class="bulk-btn primary" onclick="exitMultiSelect()">Cancel</button>
           </div>
         </div>
-        <div id="condosList"></div>
-      </div>
-      
-      <!-- Hidden elements for backward compatibility -->
-      <div id="goalsList" style="display: none;"></div>
-      <div id="sessionsList" style="display: none;"></div>
-      <div id="appsList" style="display: none;"></div>
-      <div id="agentsList" style="display: none;"></div>
-      
-      <!-- Bulk action bar (hidden by default) -->
-      <div class="bulk-action-bar" id="bulkActionBar">
-        <span class="bulk-count" id="bulkCount">0 selected</span>
-        <div class="bulk-actions">
-          <button class="bulk-btn" onclick="bulkArchive()">📦 Archive</button>
-          <button class="bulk-btn" onclick="bulkPin()">📌 Pin</button>
-          <button class="bulk-btn primary" onclick="exitMultiSelect()">Cancel</button>
+        <div class="select-all-row" id="selectAllRow" onclick="toggleSelectAll()">
+          <div class="session-checkbox" id="selectAllCheckbox"></div>
+          <span>Select All</span>
         </div>
-      </div>
-      <div class="select-all-row" id="selectAllRow" onclick="toggleSelectAll()" style="display: none;">
-        <div class="session-checkbox" id="selectAllCheckbox"></div>
-        <span>Select All</span>
+        <div id="sessionsList"></div>
       </div>
       
-      <!-- Auto archive settings (hidden) -->
-      <div style="display: none;">
-        <select id="autoArchiveSelect" onchange="setAutoArchiveDays(this.value)">
-          <option value="0.01">15m</option>
-          <option value="0.042">1h</option>
-          <option value="0.25">6h</option>
-          <option value="1">1d</option>
-          <option value="3">3d</option>
-          <option value="never">Off</option>
-        </select>
-        <label class="show-archived-toggle" id="showArchivedToggle">
-          <input type="checkbox" onchange="toggleShowArchived()">
-          📦
-        </label>
-        <button id="markAllReadBtn" onclick="markAllSessionsRead()">✓</button>
-        <button id="selectModeBtn" onclick="enterMultiSelect()">☑</button>
+      <!-- Apps -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Apps</span>
+        </div>
+        <div id="appsList"></div>
       </div>
-    </div>
-    
-    <!-- Bottom Navigation -->
-    <div class="sidebar-nav">
-      <div class="nav-btn active" id="navDashboard" onclick="showOverview()">
-        <span class="nav-icon">📊</span>
-        <span>Dashboard</span>
-      </div>
-      <div class="nav-btn" id="navApps" onclick="showAppsView()">
-        <span class="nav-icon">📱</span>
-        <span>Apps</span>
-      </div>
-      <div class="nav-btn" id="navRecurring" onclick="showRecurringView()">
-        <span class="nav-icon">🔄</span>
-        <span>Recurring</span>
+      
+      <!-- Agents -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Agents</span>
+        </div>
+        <div id="agentsList"></div>
       </div>
     </div>
     
     <div class="sidebar-footer">
+      <a href="/control/" class="control-ui-btn" title="Open Clawdbot Control UI">
+        🤖 Clawdbot UI
+      </a>
       <div class="connection-status" onclick="showLoginModal()">
         <span class="connection-dot" id="connectionDot" style="background: var(--yellow);"></span>
         <span id="connectionText">Connecting...</span>
@@ -447,371 +459,78 @@
         </div>
       </div>
 
-      <!-- Chat View (v2 - with breadcrumbs and detail panel) -->
+      <!-- Chat View -->
       <div class="view" id="chatView">
-        <!-- v2 Header with back, breadcrumbs, search -->
-        <div class="chat-v2-header">
-          <button class="v2-back-btn" onclick="goBack()" title="Back to lobby">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="m15 18-6-6 6-6"/>
-            </svg>
+        <div class="session-info" id="sessionInfo">
+          <span class="session-info-item">📍 <span id="sessionKeyDisplay">-</span></span>
+          <span class="session-info-item">🤖 <span class="session-badge" id="sessionModel">-</span></span>
+          <span class="session-info-item">📊 <span id="sessionTokens">-</span> tokens</span>
+          <span class="session-info-spacer"></span>
+          <button class="export-btn" onclick="exportChatAsMarkdown()" title="Export as Markdown">
+            <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            Export
           </button>
-          <nav class="v2-breadcrumbs" id="chatBreadcrumbs">
-            <span class="v2-breadcrumb" onclick="showOverview()">🏠</span>
-            <span class="v2-breadcrumb-sep">›</span>
-            <span class="v2-breadcrumb" id="breadcrumbCondo">🏢 SHARP</span>
-            <span class="v2-breadcrumb-sep">›</span>
-            <span class="v2-breadcrumb" id="breadcrumbGoal">Goal</span>
-            <span class="v2-breadcrumb-sep">›</span>
-            <span class="v2-breadcrumb-current">
-              <span class="v2-agent-badge" id="sessionAgentBadge">main</span>
-              <span id="sessionBreadcrumbKey">session</span>
-            </span>
-          </nav>
-          <div class="v2-header-spacer"></div>
-          <div class="v2-search-bar">
-            <svg class="v2-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <path d="m21 21-4.35-4.35"></path>
-            </svg>
-            <input type="text" id="chatSearchInput" placeholder="Search in chat...">
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        
+        <!-- Drop overlay for drag & drop -->
+        <div class="drop-overlay" id="dropOverlay">
+          <div class="drop-overlay-content">
+            <div class="drop-overlay-icon">📎</div>
+            <div class="drop-overlay-text">Drop files here</div>
+            <div class="drop-overlay-hint">Images and audio supported</div>
           </div>
-          <div class="v2-header-spacer"></div>
-          <button class="v2-info-btn" onclick="toggleChatDetailPanel()" title="Toggle details">ℹ️</button>
         </div>
         
-        <!-- Main chat content area -->
-        <div class="chat-v2-body">
-          <!-- Chat messages area -->
-          <div class="chat-v2-main">
-            <div class="chat-messages" id="chatMessages"></div>
-            
-            <!-- Drop overlay for drag & drop -->
-            <div class="drop-overlay" id="dropOverlay">
-              <div class="drop-overlay-content">
-                <div class="drop-overlay-icon">📎</div>
-                <div class="drop-overlay-text">Drop files here</div>
-                <div class="drop-overlay-hint">Images and audio supported</div>
-              </div>
-            </div>
-            
-            <div class="reconnect-overlay" id="reconnectOverlay">
-              <div class="spinner"></div>
-              <div class="reconnect-text">Reconnecting...</div>
-              <div class="reconnect-attempt" id="reconnectAttempt">Attempt 1</div>
-            </div>
-            
-            <!-- Chat Input -->
-            <div class="chat-input-area">
-              <div class="queue-indicator" id="queueIndicator">
-                <span>📨</span>
-                <span class="queue-count" id="queueCount">0</span>
-                <span>queued</span>
-                <button class="clear-queue" onclick="clearMessageQueue()" title="Clear queue">✕</button>
-              </div>
-              
-              <!-- Media preview (shows pending uploads) -->
-              <div id="mediaPreviewContainer"></div>
-              
-              <!-- Hidden file input -->
-              <input type="file" id="mediaFileInput" accept="image/*,audio/*" multiple>
-              
-              <div class="chat-input-wrapper">
-                <button class="attach-btn" onclick="document.getElementById('mediaFileInput').click()" title="Attach files">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-                  </svg>
-                </button>
-                <textarea 
-                  class="chat-input" 
-                  id="chatInput" 
-                  placeholder="Type a message..."
-                  rows="1"
-                  onkeydown="handleChatKey(event)"
-                  oninput="autoResize(this)"
-                ></textarea>
-                <button class="stop-btn" id="stopBtn" onclick="stopAgent()" disabled title="Stop">⏹</button>
-                <button class="voice-btn" id="voiceRecordBtn" title="Record voice" aria-pressed="false">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/>
-                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                  </svg>
-                </button>
-                <span class="voice-timer" id="voiceTimer">0:00</span>
-                <div class="voice-meter" id="voiceMeter">
-                  <div class="voice-meter-level" id="voiceMeterLevel"></div>
-                </div>
-                <button class="send-btn" id="sendBtn" onclick="sendMessage()">
-                  <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-                </button>
-              </div>
-              <div class="voice-hint" id="voiceHint">Recording… click mic to stop</div>
-            </div>
+        <div class="reconnect-overlay" id="reconnectOverlay">
+          <div class="spinner"></div>
+          <div class="reconnect-text">Reconnecting...</div>
+          <div class="reconnect-attempt" id="reconnectAttempt">Attempt 1</div>
+        </div>
+        <div class="chat-input-area">
+          <div class="queue-indicator" id="queueIndicator">
+            <span>📨</span>
+            <span class="queue-count" id="queueCount">0</span>
+            <span>queued</span>
+            <button class="clear-queue" onclick="clearMessageQueue()" title="Clear queue">✕</button>
           </div>
           
-          <!-- Detail panel (right side) -->
-          <div class="chat-detail-panel" id="chatDetailPanel">
-            <div class="detail-panel-section">
-              <div class="detail-panel-label">Agent</div>
-              <div class="detail-panel-value" id="detailAgent">main</div>
-            </div>
-            
-            <div class="detail-panel-section">
-              <div class="detail-panel-label">Session Key</div>
-              <div class="detail-panel-code" id="detailSessionKey">-</div>
-            </div>
-            
-            <div class="detail-panel-section">
-              <div class="detail-panel-label">Goal</div>
-              <div class="detail-panel-value detail-panel-link" id="detailGoal" onclick="openDetailGoal()">Not assigned</div>
-            </div>
-            
-            <div class="detail-panel-section">
-              <div class="detail-panel-label">Goal Status</div>
-              <div class="detail-panel-actions">
-                <button class="detail-btn success" onclick="markGoalComplete()">✓ Complete</button>
-                <button class="detail-btn secondary" onclick="markGoalIncomplete()">✗ Incomplete</button>
-              </div>
-            </div>
-            
-            <div class="detail-panel-section">
-              <div class="detail-panel-label">Stats</div>
-              <div class="detail-panel-stats">
-                <div class="detail-stat-row">
-                  <span class="detail-stat-label">Started</span>
-                  <span class="detail-stat-value" id="detailStarted">-</span>
-                </div>
-                <div class="detail-stat-row">
-                  <span class="detail-stat-label">Messages</span>
-                  <span class="detail-stat-value" id="detailMessages">-</span>
-                </div>
-                <div class="detail-stat-row">
-                  <span class="detail-stat-label">Spawned</span>
-                  <span class="detail-stat-value" id="detailSpawned">0 sessions</span>
-                </div>
-                <div class="detail-stat-row">
-                  <span class="detail-stat-label">Tokens</span>
-                  <span class="detail-stat-value" id="detailTokens">-</span>
-                </div>
-                <div class="detail-stat-row">
-                  <span class="detail-stat-label">Model</span>
-                  <span class="detail-stat-value" id="detailModel">-</span>
-                </div>
-              </div>
-            </div>
-            
-            <div class="detail-panel-section">
-              <div class="detail-panel-label">Actions</div>
-              <div class="detail-panel-actions column">
-                <button class="detail-btn secondary" onclick="exportChatAsMarkdown()">📥 Export Markdown</button>
-                <button class="detail-btn secondary" onclick="showAttachSessionModal(state.currentSession?.key)">⛓ Move to Goal</button>
-                <button class="detail-btn secondary" onclick="promptRenameSession(state.currentSession?.key)">✏️ Rename</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- New Session View -->
-      <div class="view" id="newSessionView">
-        <div class="chat-v2-header">
-          <button class="v2-back-btn" onclick="goBack()" title="Back">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="m15 18-6-6 6-6"/>
-            </svg>
-          </button>
-          <nav class="v2-breadcrumbs">
-            <span class="v2-breadcrumb" onclick="showOverview()">🏠</span>
-            <span class="v2-breadcrumb-sep">›</span>
-            <span class="v2-breadcrumb" id="newSessionCondo">🏢 SHARP</span>
-            <span class="v2-breadcrumb-sep">›</span>
-            <span class="v2-breadcrumb-current">New Session</span>
-          </nav>
-        </div>
-        
-        <div class="form-view-content">
-          <div class="form-container">
-            <div class="form-section">
-              <div class="form-label">Agent</div>
-              <div class="agent-selector" id="agentSelector">
-                <button class="agent-btn active" data-agent="main" onclick="selectAgent('main')">main</button>
-                <button class="agent-btn" data-agent="caffeine" onclick="selectAgent('caffeine')">caffeine</button>
-                <button class="agent-btn" data-agent="codex" onclick="selectAgent('codex')">codex</button>
-              </div>
-            </div>
-            
-            <div class="form-section">
-              <div class="form-label">Goal (optional)</div>
-              <select class="form-select" id="newSessionGoalSelect">
-                <option value="">— Assign later —</option>
-              </select>
-            </div>
-            
-            <div class="form-section">
-              <div class="form-label">Initial Message</div>
-              <textarea class="form-textarea" id="newSessionMessage" placeholder="What do you want to work on?" rows="4"></textarea>
-            </div>
-            
-            <div class="form-actions">
-              <button class="form-btn primary" onclick="submitNewSession()">🚀 Start Session</button>
-              <button class="form-btn secondary" onclick="showOverview()">Cancel</button>
-            </div>
-            
-            <div class="form-error" id="newSessionError"></div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- New Goal View -->
-      <div class="view" id="newGoalView">
-        <div class="chat-v2-header">
-          <button class="v2-back-btn" onclick="goBack()" title="Back">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="m15 18-6-6 6-6"/>
-            </svg>
-          </button>
-          <nav class="v2-breadcrumbs">
-            <span class="v2-breadcrumb" onclick="showOverview()">🏠</span>
-            <span class="v2-breadcrumb-sep">›</span>
-            <span class="v2-breadcrumb" id="newGoalCondo">🏢 SHARP</span>
-            <span class="v2-breadcrumb-sep">›</span>
-            <span class="v2-breadcrumb-current">New Goal</span>
-          </nav>
-        </div>
-        
-        <div class="form-view-content">
-          <div class="form-container">
-            <div class="form-section">
-              <div class="form-label">Goal Title</div>
-              <input type="text" class="form-input" id="newGoalTitle" placeholder="e.g., Implement user authentication">
-            </div>
-            
-            <div class="form-section">
-              <div class="form-label">Description (optional)</div>
-              <textarea class="form-textarea" id="newGoalDescription" placeholder="What needs to be accomplished?" rows="3"></textarea>
-            </div>
-            
-            <div class="form-section">
-              <div class="form-label">Start session immediately?</div>
-              <div class="radio-group">
-                <label class="radio-option active" id="startYesOption">
-                  <input type="radio" name="startSession" value="yes" checked onchange="updateRadioSelection(this)">
-                  <span>Yes, start working</span>
-                </label>
-                <label class="radio-option" id="startNoOption">
-                  <input type="radio" name="startSession" value="no" onchange="updateRadioSelection(this)">
-                  <span>No, just create goal</span>
-                </label>
-              </div>
-            </div>
-            
-            <div class="form-actions">
-              <button class="form-btn primary" onclick="submitNewGoal()">✓ Create Goal</button>
-              <button class="form-btn secondary" onclick="showOverview()">Cancel</button>
-            </div>
-            
-            <div class="form-error" id="newGoalError"></div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- ═══════════════════════════════════════════════════════════════
-           APPS VIEW (v2)
-           ═══════════════════════════════════════════════════════════════ -->
-      <div class="view v2-view" id="appsView">
-        <div class="content-area">
-          <div class="content-header">
-            <button class="back-btn" onclick="showOverview()" title="Back">
+          <!-- Media preview (shows pending uploads) -->
+          <div id="mediaPreviewContainer"></div>
+          
+          <!-- Hidden file input -->
+          <input type="file" id="mediaFileInput" accept="image/*,audio/*" multiple>
+          
+          <div class="chat-input-wrapper">
+            <button class="attach-btn" onclick="document.getElementById('mediaFileInput').click()" title="Attach files">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m15 18-6-6 6-6"/>
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
               </svg>
             </button>
-            <nav class="breadcrumbs">
-              <span class="breadcrumb breadcrumb-icon" onclick="showOverview()">🏠</span>
-              <span class="breadcrumb-sep">›</span>
-              <span class="breadcrumb-current">Apps</span>
-            </nav>
-            <span style="flex: 1;"></span>
-            <div class="global-search">
-              <svg class="global-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-              </svg>
-              <input type="text" id="appsSearchInput" placeholder="Search apps..." oninput="filterAppsV2(this.value)">
-              <span class="global-search-shortcut">⌘K</span>
-            </div>
-            <span style="flex: 1;"></span>
-          </div>
-          <div class="content-body">
-            <div class="content-main">
-              <div class="grid" id="appsGridV2"></div>
-            </div>
-            
-            <!-- App Detail Panel -->
-            <div class="detail-panel" id="appDetailPanel">
-              <div class="detail-header">
-                <span class="detail-title" id="appDetailTitle">🎯 Select an App</span>
-                <button class="detail-close" onclick="closeAppDetail()">✕</button>
-              </div>
-              <div class="detail-content" id="appDetailContent">
-                <div class="empty-state">
-                  <div class="empty-state-icon">📱</div>
-                  <div class="empty-state-title">No App Selected</div>
-                  <div class="empty-state-desc">Click an app card to see its details, status, and controls.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- ═══════════════════════════════════════════════════════════════
-           RECURRING TASKS VIEW (v2)
-           ═══════════════════════════════════════════════════════════════ -->
-      <div class="view v2-view" id="recurringView">
-        <div class="content-area">
-          <div class="content-header">
-            <button class="back-btn" onclick="showOverview()" title="Back">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m15 18-6-6 6-6"/>
+            <textarea 
+              class="chat-input" 
+              id="chatInput" 
+              placeholder="Type a message..."
+              rows="1"
+              onkeydown="handleChatKey(event)"
+              oninput="autoResize(this)"
+            ></textarea>
+            <button class="stop-btn" id="stopBtn" onclick="stopAgent()" disabled title="Stop">⏹</button>
+            <button class="voice-btn" id="voiceRecordBtn" title="Record voice" aria-pressed="false">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
               </svg>
             </button>
-            <nav class="breadcrumbs">
-              <span class="breadcrumb breadcrumb-icon" onclick="showOverview()">🏠</span>
-              <span class="breadcrumb-sep">›</span>
-              <span class="breadcrumb-current">Recurring Tasks</span>
-            </nav>
-            <span style="flex: 1;"></span>
-            <div class="global-search">
-              <svg class="global-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-              </svg>
-              <input type="text" id="cronSearchInput" placeholder="Search tasks..." oninput="filterCronJobsV2(this.value)">
-              <span class="global-search-shortcut">⌘K</span>
+            <span class="voice-timer" id="voiceTimer">0:00</span>
+            <div class="voice-meter" id="voiceMeter">
+              <div class="voice-meter-level" id="voiceMeterLevel"></div>
             </div>
-            <span style="flex: 1;"></span>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+              <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
           </div>
-          <div class="content-body">
-            <div class="content-main">
-              <div class="grid" id="cronGridV2"></div>
-            </div>
-            
-            <!-- Cron Detail Panel -->
-            <div class="detail-panel" id="cronDetailPanel">
-              <div class="detail-header">
-                <span class="detail-title" id="cronDetailTitle">🔄 Select a Task</span>
-                <button class="detail-close" onclick="closeCronDetail()">✕</button>
-              </div>
-              <div class="detail-content" id="cronDetailContent">
-                <div class="empty-state">
-                  <div class="empty-state-icon">⏰</div>
-                  <div class="empty-state-title">No Task Selected</div>
-                  <div class="empty-state-desc">Click a recurring task card to see its schedule, payload, and execution history.</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <div class="voice-hint" id="voiceHint">Recording… click mic to stop</div>
         </div>
       </div>
     </div>
@@ -936,15 +655,6 @@
       // Track which agent nodes are expanded in sidebar (Agents > Sessions/Subsessions)
       expandedAgents: JSON.parse(localStorage.getItem('sharp_expanded_agents') || '{}'),
       
-      // v2: Track which condos are expanded in sidebar
-      expandedCondos: JSON.parse(localStorage.getItem('sharp_expanded_condos') || '{}'),
-      
-      // v2: Track which goals are expanded under their condo
-      expandedGoalsInCondo: JSON.parse(localStorage.getItem('sharp_expanded_goals_in_condo') || '{}'),
-      
-      // v2: Current sidebar nav tab (dashboard, apps, recurring)
-      sidebarNavTab: 'dashboard',
-      
       // Session status (two separate concepts)
       // 1) Brief current state (LLM-generated text)
       sessionBriefStatus: JSON.parse(localStorage.getItem('sharp_session_brief_status') || '{}'),
@@ -958,873 +668,6 @@
       toolActivityExpanded: false
     };
     
-    // ═══════════════════════════════════════════════════════════════
-    // CONDOS DEFINITION (v2)
-    // Hardcoded for now - maps to Telegram topics
-    // ═══════════════════════════════════════════════════════════════
-    const CONDOS = [
-      { id: 'sharp', name: 'SHARP', icon: '🏢', topicId: 54 },
-      { id: 'claude-code', name: 'Claude Code', icon: '💻', topicId: null },
-      { id: 'subastas', name: 'Subastas', icon: '🏠', topicId: 2 },
-      { id: 'crm-codex', name: 'CRM Codex', icon: '💼', topicId: 106 },
-      { id: 'caffeine', name: 'Caffeine', icon: '☕', topicId: 352 },
-    ];
-    
-    // ═══════════════════════════════════════════════════════════════
-    // CONDO MANAGEMENT (v2)
-    // ═══════════════════════════════════════════════════════════════
-    function isCondoExpanded(condoId) {
-      // Default to expanded for the first condo
-      return state.expandedCondos[condoId] !== false;
-    }
-    
-    function toggleCondoExpanded(condoId, event) {
-      if (event) event.stopPropagation();
-      state.expandedCondos[condoId] = !isCondoExpanded(condoId);
-      localStorage.setItem('sharp_expanded_condos', JSON.stringify(state.expandedCondos));
-      renderCondos();
-    }
-    
-    function isGoalExpandedInCondo(goalId) {
-      return state.expandedGoalsInCondo[goalId] !== false;
-    }
-    
-    function toggleGoalExpandedInCondo(goalId, event) {
-      if (event) event.stopPropagation();
-      state.expandedGoalsInCondo[goalId] = !isGoalExpandedInCondo(goalId);
-      localStorage.setItem('sharp_expanded_goals_in_condo', JSON.stringify(state.expandedGoalsInCondo));
-      renderCondos();
-    }
-    
-    // Get sessions for a condo (by topic ID or goal association)
-    function getSessionsForCondo(condo) {
-      // TODO: Map sessions to condos via topic ID or goal association
-      // For now, return all sessions if no topic filter
-      const sessions = state.sessions.filter(s => {
-        // Skip archived
-        if (isSessionArchived(s.key) && !state.showArchived) return false;
-        // Skip subagents (they appear under their parent)
-        if (s.key.includes(':subagent:')) return false;
-        // Match search query
-        if (!matchesSearch(s)) return false;
-        
-        // If condo has a topicId, match sessions from that topic
-        if (condo.topicId) {
-          return s.key.includes(`:topic:${condo.topicId}`);
-        }
-        
-        // Otherwise, check if the session is assigned to a goal in this condo
-        // (For now, just include unassigned sessions in first condo)
-        return false;
-      });
-      return sessions;
-    }
-    
-    // Get goals assigned to a condo
-    function getGoalsForCondo(condo) {
-      // For now, distribute goals across condos based on their sessions
-      // Goals with sessions matching the condo's topic go to that condo
-      const goals = [];
-      for (const goal of state.goals) {
-        if (!goal.sessions || goal.sessions.length === 0) continue;
-        
-        // Check if any session in this goal matches the condo's topic
-        if (condo.topicId) {
-          const hasMatchingSession = goal.sessions.some(sKey => 
-            sKey.includes(`:topic:${condo.topicId}`)
-          );
-          if (hasMatchingSession) {
-            goals.push(goal);
-          }
-        }
-      }
-      return goals;
-    }
-    
-    // Get sessions for a goal (that match search/filter)
-    function getSessionsForGoal(goal) {
-      if (!goal.sessions) return [];
-      return state.sessions.filter(s => {
-        if (!goal.sessions.includes(s.key)) return false;
-        if (isSessionArchived(s.key) && !state.showArchived) return false;
-        if (!matchesSearch(s)) return false;
-        return true;
-      });
-    }
-    
-    // Get subagent sessions attached to a parent session
-    function getSubagentsForSession(parentKey) {
-      return state.sessions.filter(s => {
-        if (!s.key.includes(':subagent:')) return false;
-        // Heuristic: match by agent ID and close timestamp
-        // For now, just return subagents from same agent
-        const parentAgent = parentKey.match(/^agent:([^:]+):/)?.[1];
-        const subAgent = s.key.match(/^agent:([^:]+):/)?.[1];
-        return parentAgent && parentAgent === subAgent;
-      }).slice(0, 5); // Limit to 5 most recent
-    }
-    
-    // Count unread sessions in a condo
-    function getCondoUnreadCount(condo) {
-      const sessions = getSessionsForCondo(condo);
-      const goals = getGoalsForCondo(condo);
-      
-      let count = sessions.filter(s => isSessionUnread(s.key)).length;
-      
-      // Also count unread sessions in goals
-      for (const goal of goals) {
-        const goalSessions = getSessionsForGoal(goal);
-        count += goalSessions.filter(s => isSessionUnread(s.key)).length;
-      }
-      
-      return count;
-    }
-    
-    // Check if condo has any errors
-    function getCondoErrorCount(condo) {
-      const sessions = getSessionsForCondo(condo);
-      const goals = getGoalsForCondo(condo);
-      
-      let count = sessions.filter(s => getAgentStatus(s.key) === 'error').length;
-      
-      for (const goal of goals) {
-        const goalSessions = getSessionsForGoal(goal);
-        count += goalSessions.filter(s => getAgentStatus(s.key) === 'error').length;
-      }
-      
-      return count;
-    }
-    
-    // Render the v2 sidebar condos
-    function renderCondos() {
-      const container = document.getElementById('condosList');
-      if (!container) return;
-      
-      let html = '';
-      
-      for (const condo of CONDOS) {
-        const expanded = isCondoExpanded(condo.id);
-        const goals = getGoalsForCondo(condo);
-        const directSessions = getSessionsForCondo(condo);
-        const unreadCount = getCondoUnreadCount(condo);
-        const errorCount = getCondoErrorCount(condo);
-        const hasActiveSession = state.currentSession && (
-          directSessions.some(s => s.key === state.currentSession.key) ||
-          goals.some(g => getSessionsForGoal(g).some(s => s.key === state.currentSession.key))
-        );
-        
-        // Condo badge
-        let badge = '';
-        if (errorCount > 0) {
-          badge = `<span class="condo-badge error">${errorCount}</span>`;
-        } else if (unreadCount > 0) {
-          badge = `<span class="condo-badge unread">${unreadCount}</span>`;
-        } else if (goals.length + directSessions.length > 0) {
-          badge = `<span class="condo-badge">${goals.length + directSessions.length}</span>`;
-        }
-        
-        html += `
-          <div class="condo-item ${expanded ? 'expanded' : ''}" data-condo-id="${escapeHtml(condo.id)}">
-            <div class="condo-header ${hasActiveSession ? 'active' : ''}" onclick="toggleCondoExpanded('${escapeHtml(condo.id)}')">
-              <span class="condo-expand">▶</span>
-              <span class="condo-icon">${condo.icon}</span>
-              <span class="condo-name">${escapeHtml(condo.name)}</span>
-              ${badge}
-              <span class="condo-add" onclick="showCreateSessionInCondo('${escapeHtml(condo.id)}', event)" title="New session in ${escapeHtml(condo.name)}">+</span>
-            </div>
-            <div class="condo-goals">
-        `;
-        
-        // Render goals under this condo
-        for (const goal of goals) {
-          const goalExpanded = isGoalExpandedInCondo(goal.id);
-          const goalSessions = getSessionsForGoal(goal);
-          const goalUnread = goalSessions.filter(s => isSessionUnread(s.key)).length;
-          const isDone = goal.status === 'done';
-          
-          html += `
-            <div class="goal-item ${goalExpanded ? 'expanded' : ''}" onclick="toggleGoalExpandedInCondo('${escapeHtml(goal.id)}', event)">
-              <span class="goal-expand">▶</span>
-              <div class="goal-checkbox ${isDone ? 'completed' : ''}" onclick="event.stopPropagation(); openGoal('${escapeHtml(goal.id)}')"></div>
-              <span class="goal-name">${escapeHtml(goal.title || 'Untitled goal')}</span>
-              <span class="goal-count">${goalSessions.length}</span>
-              <span class="goal-add" onclick="event.stopPropagation(); startNewSessionForGoal('${escapeHtml(goal.id)}')" title="New session for this goal">+</span>
-            </div>
-          `;
-          
-          // Render sessions under goal
-          if (goalExpanded && goalSessions.length > 0) {
-            html += `<div class="goal-sessions">`;
-            for (const session of goalSessions) {
-              html += renderCondoSessionItem(session);
-              
-              // Render subagents inline
-              const subagents = getSubagentsForSession(session.key);
-              for (const sub of subagents) {
-                html += renderCondoSessionItem(sub, true);
-              }
-            }
-            html += `</div>`;
-          }
-        }
-        
-        // Add "New goal..." placeholder
-        html += `
-          <div class="goal-item add-goal" onclick="showCreateGoalForCondo('${escapeHtml(condo.id)}')">
-            <span style="font-size: 0.9rem;">+</span>
-            <span class="goal-name">New goal...</span>
-          </div>
-        `;
-        
-        // Render direct sessions (not in any goal) under this condo
-        if (directSessions.length > 0) {
-          html += `<div class="goal-sessions" style="margin-top: 8px;">`;
-          for (const session of directSessions) {
-            html += renderCondoSessionItem(session);
-          }
-          html += `</div>`;
-        }
-        
-        html += `
-            </div>
-          </div>
-        `;
-      }
-      
-      // Show uncategorized sessions count if any
-      const uncategorizedCount = getUncategorizedSessionCount();
-      if (uncategorizedCount > 0) {
-        html += `
-          <div class="condo-item" style="margin-top: 12px;">
-            <div class="condo-header" onclick="showUncategorizedSessions()" style="opacity: 0.7;">
-              <span class="condo-expand" style="visibility: hidden;">▶</span>
-              <span class="condo-icon">📦</span>
-              <span class="condo-name">Uncategorized</span>
-              <span class="condo-badge">${uncategorizedCount}</span>
-            </div>
-          </div>
-        `;
-      }
-      
-      container.innerHTML = html;
-    }
-    
-    // Render a session item for the v2 sidebar
-    function renderCondoSessionItem(session, isSubagent = false) {
-      const isActive = state.currentSession?.key === session.key;
-      const isUnread = isSessionUnread(session.key);
-      const agentStatus = getAgentStatus(session.key);
-      const name = getSessionName(session);
-      
-      // Determine dot class
-      let dotClass = '';
-      if (agentStatus === 'thinking') dotClass = 'active';
-      else if (agentStatus === 'error') dotClass = 'error';
-      else if (isUnread) dotClass = 'unread';
-      
-      return `
-        <div class="session-item ${isActive ? 'active' : ''}" 
-             style="${isSubagent ? 'padding-left: 24px; font-size: 0.7rem;' : ''}"
-             onclick="openSession('${escapeHtml(session.key)}')">
-          <div class="session-dot ${dotClass}"></div>
-          <span class="session-name">${isSubagent ? '↳ ' : ''}${escapeHtml(name)}</span>
-          ${isSubagent ? '<span class="session-subagent-badge">⚡</span>' : ''}
-        </div>
-      `;
-    }
-    
-    // Get count of uncategorized sessions
-    function getUncategorizedSessionCount() {
-      const allSessions = state.sessions.filter(s => {
-        if (isSessionArchived(s.key) && !state.showArchived) return false;
-        if (s.key.includes(':subagent:')) return false;
-        return true;
-      });
-      
-      const categorized = new Set();
-      
-      // Sessions in condos via topic
-      for (const condo of CONDOS) {
-        if (condo.topicId) {
-          allSessions.forEach(s => {
-            if (s.key.includes(`:topic:${condo.topicId}`)) {
-              categorized.add(s.key);
-            }
-          });
-        }
-      }
-      
-      // Sessions in goals
-      for (const goal of state.goals) {
-        if (goal.sessions) {
-          goal.sessions.forEach(k => categorized.add(k));
-        }
-      }
-      
-      return allSessions.filter(s => !categorized.has(s.key)).length;
-    }
-    
-    // Show uncategorized sessions (open wizard)
-    function showUncategorizedSessions() {
-      openOrganizeWizard();
-    }
-    
-    // Create session in a specific condo
-    function showCreateSessionInCondo(condoId, event) {
-      if (event) event.stopPropagation();
-      // For now, start a new session and let user categorize
-      const condo = CONDOS.find(c => c.id === condoId);
-      if (condo) {
-        showToast(`Starting new session in ${condo.name}...`);
-        startNewSession('main');
-      }
-    }
-    
-    // Create goal for a specific condo
-    function showCreateGoalForCondo(condoId) {
-      // Just show the regular create goal modal for now
-      showCreateGoalModal();
-    }
-    
-    // Start new session for a specific goal
-    function startNewSessionForGoal(goalId) {
-      const goal = state.goals.find(g => g.id === goalId);
-      if (goal) {
-        showToast(`Starting new session for "${goal.title}"...`);
-        startNewSession('main');
-      }
-    }
-    
-    // Bottom nav tab handlers
-    let selectedAppId = null;
-    let appsSearchQuery = '';
-    let selectedCronId = null;
-    let cronSearchQuery = '';
-    let cronJobs = [];
-    
-    function hideAllViews() {
-      document.getElementById('overviewView')?.classList.remove('active');
-      document.getElementById('chatView')?.classList.remove('active');
-      document.getElementById('goalView')?.classList.remove('active');
-      document.getElementById('appsView')?.classList.remove('active');
-      document.getElementById('recurringView')?.classList.remove('active');
-      const newSessionView = document.getElementById('newSessionView');
-      if (newSessionView) newSessionView.classList.remove('active');
-      const newGoalView = document.getElementById('newGoalView');
-      if (newGoalView) newGoalView.classList.remove('active');
-    }
-    
-    function showAppsView() {
-      state.currentView = 'apps';
-      state.currentSession = null;
-      
-      hideAllViews();
-      document.getElementById('appsView')?.classList.add('active');
-      document.getElementById('mainTitle').textContent = 'Apps';
-      document.getElementById('mainSubtitle').textContent = '';
-      document.getElementById('headerAction').style.display = 'none';
-      document.getElementById('headerStatusIndicator').style.display = 'none';
-      
-      updateNavActive('apps');
-      renderAppsV2();
-      updateMobileHeader();
-      closeSidebar();
-    }
-    
-    function showRecurringView() {
-      state.currentView = 'recurring';
-      state.currentSession = null;
-      
-      hideAllViews();
-      document.getElementById('recurringView')?.classList.add('active');
-      document.getElementById('mainTitle').textContent = 'Recurring Tasks';
-      document.getElementById('mainSubtitle').textContent = '';
-      document.getElementById('headerAction').style.display = 'none';
-      document.getElementById('headerStatusIndicator').style.display = 'none';
-      
-      updateNavActive('recurring');
-      loadCronJobs();
-      updateMobileHeader();
-      closeSidebar();
-    }
-    
-    function updateNavActive(tab) {
-      state.sidebarNavTab = tab;
-      document.querySelectorAll('.sidebar-nav .nav-btn').forEach(btn => {
-        btn.classList.remove('active');
-      });
-      const activeBtn = document.getElementById(`nav${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
-      if (activeBtn) activeBtn.classList.add('active');
-    }
-    
-    // ═══════════════════════════════════════════════════════════════
-    // APPS VIEW (v2)
-    // ═══════════════════════════════════════════════════════════════
-    function filterAppsV2(query) {
-      appsSearchQuery = query.toLowerCase().trim();
-      renderAppsV2();
-    }
-    
-    function renderAppsV2() {
-      const container = document.getElementById('appsGridV2');
-      if (!container) return;
-      
-      let apps = state.apps || [];
-      
-      // Filter by search
-      if (appsSearchQuery) {
-        apps = apps.filter(app => {
-          const name = (app.name || app.id || '').toLowerCase();
-          const desc = (app.description || '').toLowerCase();
-          return name.includes(appsSearchQuery) || desc.includes(appsSearchQuery);
-        });
-      }
-      
-      if (apps.length === 0) {
-        container.innerHTML = `
-          <div class="empty-state" style="grid-column: 1 / -1;">
-            <div class="empty-state-icon">📱</div>
-            <div class="empty-state-title">${appsSearchQuery ? 'No apps found' : 'No Apps'}</div>
-            <div class="empty-state-desc">${appsSearchQuery ? 'Try a different search term' : 'Apps will appear here when registered.'}</div>
-          </div>
-        `;
-        return;
-      }
-      
-      container.innerHTML = apps.map(app => {
-        const status = app.status || 'unknown';
-        const statusClass = status === 'running' ? 'running' : status === 'stopped' ? 'stopped' : 'idle';
-        const statusText = status.charAt(0).toUpperCase() + status.slice(1);
-        const icon = app.icon || getAppIcon(app.id || app.name);
-        const isSelected = selectedAppId === (app.id || app.name);
-        
-        return `
-          <div class="grid-card ${isSelected ? 'selected' : ''}" onclick="selectAppV2('${escapeHtml(app.id || app.name)}')">
-            <div class="grid-card-header">
-              <div class="grid-card-icon">${icon}</div>
-              <div class="grid-card-actions">
-                <button class="icon-btn" onclick="event.stopPropagation(); openAppInNewTab('${escapeHtml(app.url || '')}')" title="Open">↗</button>
-              </div>
-            </div>
-            <div class="grid-card-title">${escapeHtml(app.name || app.id)}</div>
-            <div class="grid-card-desc">${escapeHtml(app.description || '')}</div>
-            <div class="grid-card-meta">
-              <div class="status-indicator">
-                <span class="status-dot ${statusClass}"></span>
-                <span class="status-text ${statusClass}">${statusText}</span>
-              </div>
-              ${app.port ? `<span>:${app.port}</span>` : ''}
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-    
-    function getAppIcon(name) {
-      const n = (name || '').toLowerCase();
-      if (n.includes('goal')) return '🎯';
-      if (n.includes('investor') || n.includes('crm')) return '💼';
-      if (n.includes('subasta') || n.includes('auction')) return '🏠';
-      if (n.includes('secret') || n.includes('vault')) return '🔐';
-      if (n.includes('knowledge') || n.includes('kb')) return '📚';
-      if (n.includes('ecosystem') || n.includes('tracker')) return '👁️';
-      if (n.includes('caffeine') || n.includes('coffee')) return '☕';
-      return '📱';
-    }
-    
-    function openAppInNewTab(url) {
-      if (url) window.open(url, '_blank');
-    }
-    
-    function selectAppV2(appId) {
-      selectedAppId = appId;
-      renderAppsV2();
-      renderAppDetailPanel(appId);
-    }
-    
-    function renderAppDetailPanel(appId) {
-      const app = state.apps?.find(a => (a.id || a.name) === appId);
-      const titleEl = document.getElementById('appDetailTitle');
-      const contentEl = document.getElementById('appDetailContent');
-      
-      if (!app) {
-        if (titleEl) titleEl.textContent = '📱 Select an App';
-        if (contentEl) contentEl.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">📱</div>
-            <div class="empty-state-title">No App Selected</div>
-            <div class="empty-state-desc">Click an app card to see its details, status, and controls.</div>
-          </div>
-        `;
-        return;
-      }
-      
-      const icon = app.icon || getAppIcon(app.id || app.name);
-      const status = app.status || 'unknown';
-      const statusClass = status === 'running' ? 'running' : status === 'stopped' ? 'stopped' : 'idle';
-      const statusColor = status === 'running' ? 'var(--green)' : status === 'stopped' ? 'var(--red)' : 'var(--yellow)';
-      
-      if (titleEl) titleEl.textContent = `${icon} ${app.name || app.id}`;
-      
-      if (contentEl) contentEl.innerHTML = `
-        <div class="detail-section">
-          <div class="detail-label">Status</div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span class="status-dot ${statusClass}" style="width: 10px; height: 10px;"></span>
-            <span class="detail-value" style="color: ${statusColor};">${status.charAt(0).toUpperCase() + status.slice(1)}</span>
-          </div>
-        </div>
-        
-        <div class="detail-section">
-          <div class="detail-label">Configuration</div>
-          <div style="background: var(--bg); border-radius: 8px; overflow: hidden;">
-            ${app.port ? `
-            <div class="detail-row" style="padding: 12px;">
-              <span class="detail-row-label">Port</span>
-              <span class="detail-row-value">${app.port}</span>
-            </div>` : ''}
-            ${app.service ? `
-            <div class="detail-row" style="padding: 12px;">
-              <span class="detail-row-label">Service</span>
-              <span class="detail-row-value">${escapeHtml(app.service)}</span>
-            </div>` : ''}
-            ${app.path ? `
-            <div class="detail-row" style="padding: 12px;">
-              <span class="detail-row-label">Path</span>
-              <span class="detail-row-value" style="font-size: 11px;">${escapeHtml(app.path)}</span>
-            </div>` : ''}
-          </div>
-        </div>
-        
-        ${app.command ? `
-        <div class="detail-section">
-          <div class="detail-label">Start Command</div>
-          <div class="detail-code">${escapeHtml(app.command)}</div>
-        </div>` : ''}
-        
-        ${app.uptime || app.lastRestart || app.memory ? `
-        <div class="detail-section">
-          <div class="detail-label">Health</div>
-          <div style="background: var(--bg); border-radius: 8px; overflow: hidden;">
-            ${app.uptime ? `
-            <div class="detail-row" style="padding: 12px;">
-              <span class="detail-row-label">Uptime</span>
-              <span class="detail-row-value">${app.uptime}</span>
-            </div>` : ''}
-            ${app.lastRestart ? `
-            <div class="detail-row" style="padding: 12px;">
-              <span class="detail-row-label">Last Restart</span>
-              <span class="detail-row-value">${app.lastRestart}</span>
-            </div>` : ''}
-            ${app.memory ? `
-            <div class="detail-row" style="padding: 12px;">
-              <span class="detail-row-label">Memory</span>
-              <span class="detail-row-value">${app.memory}</span>
-            </div>` : ''}
-          </div>
-        </div>` : ''}
-        
-        <div class="detail-actions">
-          ${app.url ? `<button class="btn-v2 btn-v2-primary" onclick="openAppInNewTab('${escapeHtml(app.url)}')">↗ Open App</button>` : ''}
-          ${app.service ? `<button class="btn-v2 btn-v2-secondary" onclick="restartApp('${escapeHtml(app.id || app.name)}')">🔄 Restart</button>` : ''}
-          ${app.service && status === 'running' ? `<button class="btn-v2 btn-v2-danger" onclick="stopApp('${escapeHtml(app.id || app.name)}')">⏹ Stop</button>` : ''}
-        </div>
-      `;
-    }
-    
-    function closeAppDetail() {
-      selectedAppId = null;
-      renderAppsV2();
-      renderAppDetailPanel(null);
-    }
-    
-    async function restartApp(appId) {
-      showToast(`Restarting ${appId}...`, 'info');
-      // TODO: Implement via RPC if available
-    }
-    
-    async function stopApp(appId) {
-      showToast(`Stopping ${appId}...`, 'info');
-      // TODO: Implement via RPC if available
-    }
-    
-    // ═══════════════════════════════════════════════════════════════
-    // RECURRING TASKS VIEW (v2)
-    // ═══════════════════════════════════════════════════════════════
-    async function loadCronJobs() {
-      try {
-        const result = await rpcCall('cron.list', {});
-        cronJobs = result?.jobs || result || [];
-        renderCronJobsV2();
-      } catch (err) {
-        console.error('Failed to load cron jobs:', err);
-        cronJobs = [];
-        renderCronJobsV2();
-      }
-    }
-    
-    function filterCronJobsV2(query) {
-      cronSearchQuery = query.toLowerCase().trim();
-      renderCronJobsV2();
-    }
-    
-    function renderCronJobsV2() {
-      const container = document.getElementById('cronGridV2');
-      if (!container) return;
-      
-      let jobs = cronJobs || [];
-      
-      // Filter by search
-      if (cronSearchQuery) {
-        jobs = jobs.filter(job => {
-          const name = (job.name || job.id || '').toLowerCase();
-          const desc = (job.description || job.payload?.message || '').toLowerCase();
-          return name.includes(cronSearchQuery) || desc.includes(cronSearchQuery);
-        });
-      }
-      
-      if (jobs.length === 0) {
-        container.innerHTML = `
-          <div class="empty-state" style="grid-column: 1 / -1;">
-            <div class="empty-state-icon">⏰</div>
-            <div class="empty-state-title">${cronSearchQuery ? 'No tasks found' : 'No Recurring Tasks'}</div>
-            <div class="empty-state-desc">${cronSearchQuery ? 'Try a different search term' : 'Cron jobs will appear here when configured.'}</div>
-          </div>
-        `;
-        return;
-      }
-      
-      container.innerHTML = jobs.map(job => {
-        const isActive = job.enabled !== false;
-        const statusClass = isActive ? 'running' : 'disabled';
-        const statusText = isActive ? 'Active' : 'Disabled';
-        const icon = getCronIcon(job.name || job.id);
-        const isSelected = selectedCronId === job.id;
-        const schedule = formatCronSchedule(job);
-        
-        return `
-          <div class="grid-card ${isSelected ? 'selected' : ''}" onclick="selectCronJobV2('${escapeHtml(job.id)}')" ${!isActive ? 'style="opacity: 0.7;"' : ''}>
-            <div class="grid-card-header">
-              <div class="grid-card-icon">${icon}</div>
-              <div class="grid-card-actions">
-                <button class="icon-btn" onclick="event.stopPropagation(); toggleCronJob('${escapeHtml(job.id)}')" title="${isActive ? 'Disable' : 'Enable'}">
-                  ${isActive ? '⏸' : '▶'}
-                </button>
-              </div>
-            </div>
-            <div class="grid-card-title">${escapeHtml(job.name || job.id)}</div>
-            <div class="grid-card-desc">${escapeHtml(job.description || truncateTextV2(job.payload?.message || '', 50))}</div>
-            <div class="grid-card-meta">
-              <span>${schedule}</span>
-              <div class="status-indicator">
-                <span class="status-dot ${statusClass}"></span>
-                <span class="status-text ${statusClass}">${statusText}</span>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-    
-    function getCronIcon(name) {
-      const n = (name || '').toLowerCase();
-      if (n.includes('caffeine') || n.includes('coffee') || n.includes('moltbook')) return '☕';
-      if (n.includes('email') || n.includes('mail')) return '📧';
-      if (n.includes('subasta') || n.includes('boe') || n.includes('auction')) return '🏠';
-      if (n.includes('learning') || n.includes('capture')) return '📧';
-      if (n.includes('tool') || n.includes('audit')) return '🔍';
-      if (n.includes('backup')) return '💾';
-      if (n.includes('heartbeat') || n.includes('health')) return '💓';
-      return '🔄';
-    }
-    
-    function formatCronSchedule(job) {
-      if (job.intervalMs) {
-        const mins = Math.round(job.intervalMs / 60000);
-        if (mins < 60) return `Every ${mins}m`;
-        const hours = Math.round(mins / 60);
-        if (hours < 24) return `Every ${hours}h`;
-        return `Every ${Math.round(hours / 24)}d`;
-      }
-      if (job.cron) {
-        const parts = job.cron.split(' ');
-        if (parts.length >= 5) {
-          const [min, hour, dom, mon, dow] = parts;
-          if (min !== '*' && hour !== '*' && dom === '*' && mon === '*' && dow === '*') {
-            return `Daily ${hour}:${min.padStart(2, '0')}`;
-          }
-        }
-        return job.cron;
-      }
-      return job.schedule || 'Unknown';
-    }
-    
-    function truncateTextV2(text, maxLen) {
-      if (!text) return '';
-      if (text.length <= maxLen) return text;
-      return text.slice(0, maxLen) + '...';
-    }
-    
-    function selectCronJobV2(cronId) {
-      selectedCronId = cronId;
-      renderCronJobsV2();
-      renderCronDetailPanel(cronId);
-    }
-    
-    function renderCronDetailPanel(cronId) {
-      const job = cronJobs?.find(j => j.id === cronId);
-      const titleEl = document.getElementById('cronDetailTitle');
-      const contentEl = document.getElementById('cronDetailContent');
-      
-      if (!job) {
-        if (titleEl) titleEl.textContent = '🔄 Select a Task';
-        if (contentEl) contentEl.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">⏰</div>
-            <div class="empty-state-title">No Task Selected</div>
-            <div class="empty-state-desc">Click a recurring task card to see its schedule, payload, and execution history.</div>
-          </div>
-        `;
-        return;
-      }
-      
-      const icon = getCronIcon(job.name || job.id);
-      const isActive = job.enabled !== false;
-      const statusClass = isActive ? 'running' : 'disabled';
-      const statusColor = isActive ? 'var(--green)' : 'var(--text-muted)';
-      
-      if (titleEl) titleEl.textContent = `${icon} ${job.name || job.id}`;
-      
-      if (contentEl) contentEl.innerHTML = `
-        <div class="detail-section">
-          <div class="detail-label">Status</div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span class="status-dot ${statusClass}" style="width: 10px; height: 10px;"></span>
-            <span class="detail-value" style="color: ${statusColor};">${isActive ? 'Active' : 'Disabled'}</span>
-          </div>
-        </div>
-        
-        <div class="detail-section">
-          <div class="detail-label">Schedule</div>
-          <div style="background: var(--bg); border-radius: 8px; overflow: hidden;">
-            <div class="detail-row" style="padding: 12px;">
-              <span class="detail-row-label">Type</span>
-              <span class="detail-row-value">${job.intervalMs ? 'Interval' : 'Cron'}</span>
-            </div>
-            <div class="detail-row" style="padding: 12px;">
-              <span class="detail-row-label">${job.intervalMs ? 'Every' : 'Expression'}</span>
-              <span class="detail-row-value">${formatCronSchedule(job)}</span>
-            </div>
-          </div>
-        </div>
-        
-        ${job.target || job.sessionKey ? `
-        <div class="detail-section">
-          <div class="detail-label">Target</div>
-          <div class="detail-value">${escapeHtml(job.target || job.sessionKey || 'isolated session')}</div>
-        </div>` : ''}
-        
-        ${job.payload ? `
-        <div class="detail-section">
-          <div class="detail-label">Payload</div>
-          <div class="detail-code">${escapeHtml(JSON.stringify(job.payload, null, 2))}</div>
-        </div>` : ''}
-        
-        <div class="detail-section">
-          <div class="detail-label">Execution</div>
-          <div style="background: var(--bg); border-radius: 8px; overflow: hidden;">
-            ${job.lastRun ? `
-            <div class="detail-row" style="padding: 12px;">
-              <span class="detail-row-label">Last Run</span>
-              <span class="detail-row-value">${formatRelativeTimeV2(job.lastRun)} ${job.lastRunSuccess !== false ? '✓' : '✗'}</span>
-            </div>` : ''}
-            ${job.nextRun ? `
-            <div class="detail-row" style="padding: 12px;">
-              <span class="detail-row-label">Next Run</span>
-              <span class="detail-row-value">${formatRelativeTimeV2(job.nextRun)}</span>
-            </div>` : ''}
-            ${job.runCount !== undefined ? `
-            <div class="detail-row" style="padding: 12px;">
-              <span class="detail-row-label">Total Runs</span>
-              <span class="detail-row-value">${job.runCount}</span>
-            </div>` : ''}
-          </div>
-        </div>
-        
-        <div class="detail-actions">
-          <button class="btn-v2 btn-v2-primary" onclick="runCronJobNow('${escapeHtml(job.id)}')">▶ Run Now</button>
-          <button class="btn-v2 btn-v2-secondary" onclick="editCronJob('${escapeHtml(job.id)}')">✏️ Edit</button>
-          <button class="btn-v2 btn-v2-danger" onclick="deleteCronJob('${escapeHtml(job.id)}')">🗑 Delete</button>
-        </div>
-      `;
-    }
-    
-    function formatRelativeTimeV2(timestamp) {
-      if (!timestamp) return 'Unknown';
-      const now = Date.now();
-      const ts = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
-      const diff = ts - now;
-      const absDiff = Math.abs(diff);
-      
-      if (absDiff < 60000) return diff > 0 ? 'in < 1 min' : '< 1 min ago';
-      if (absDiff < 3600000) {
-        const mins = Math.round(absDiff / 60000);
-        return diff > 0 ? `in ${mins} min` : `${mins} min ago`;
-      }
-      if (absDiff < 86400000) {
-        const hours = Math.round(absDiff / 3600000);
-        return diff > 0 ? `in ${hours}h` : `${hours}h ago`;
-      }
-      const days = Math.round(absDiff / 86400000);
-      return diff > 0 ? `in ${days}d` : `${days}d ago`;
-    }
-    
-    function closeCronDetail() {
-      selectedCronId = null;
-      renderCronJobsV2();
-      renderCronDetailPanel(null);
-    }
-    
-    async function runCronJobNow(cronId) {
-      showToast(`Running ${cronId}...`, 'info');
-      try {
-        await rpcCall('cron.runNow', { id: cronId });
-        showToast(`${cronId} triggered`, 'success');
-        loadCronJobs();
-      } catch (err) {
-        showToast(`Failed: ${err.message}`, 'error');
-      }
-    }
-    
-    async function toggleCronJob(cronId) {
-      const job = cronJobs?.find(j => j.id === cronId);
-      if (!job) return;
-      const newEnabled = job.enabled === false;
-      showToast(`${newEnabled ? 'Enabling' : 'Disabling'} ${cronId}...`, 'info');
-      try {
-        await rpcCall('cron.update', { id: cronId, enabled: newEnabled });
-        loadCronJobs();
-      } catch (err) {
-        showToast(`Failed: ${err.message}`, 'error');
-      }
-    }
-    
-    function editCronJob(cronId) {
-      showToast('Edit not yet implemented', 'warning');
-    }
-    
-    async function deleteCronJob(cronId) {
-      if (!confirm(`Delete cron job "${cronId}"?`)) return;
-      try {
-        await rpcCall('cron.delete', { id: cronId });
-        showToast(`Deleted ${cronId}`, 'success');
-        closeCronDetail();
-        loadCronJobs();
-      } catch (err) {
-        showToast(`Failed: ${err.message}`, 'error');
-      }
-    }
-
     // ═══════════════════════════════════════════════════════════════
     // SESSION PIN & ARCHIVE
     // ═══════════════════════════════════════════════════════════════
@@ -2645,13 +1488,7 @@
           showLoginModal();
           const errorDiv = document.getElementById('loginError');
           if (errorDiv) {
-            const raw = err.message || 'Authentication failed';
-            // Friendlier guidance for common auth/setup failures
-            if (/device identity required/i.test(raw)) {
-              errorDiv.innerHTML = `Device identity required. OpenClaw needs a device identity to authenticate this dashboard.<br><span style="color: var(--text-muted)">Fix: create/enable device identity in your gateway config, then reload.</span>`;
-            } else {
-              errorDiv.textContent = raw;
-            }
+            errorDiv.textContent = err.message || 'Authentication failed';
             errorDiv.style.display = 'block';
           }
         },
@@ -3360,7 +2197,6 @@
         state.goals = data.goals || [];
         renderGoals();
         renderGoalsGrid();
-        renderCondos();  // v2 sidebar
         updateUncategorizedCount();
       } catch (err) {
         console.error('[ClawCondos] Failed to load goals:', err);
@@ -4636,7 +3472,6 @@ Response format:
           // Check for auto-archiving before rendering
           checkAutoArchive();
           renderSessions();
-          renderCondos();  // v2 sidebar
           renderSessionsGrid();
           updateUncategorizedCount();
           // Agents tree uses sessions for its nested view
@@ -5265,14 +4100,6 @@ Response format:
         backBtn.style.display = 'flex';
         const g = state.goals.find(x => x.id === state.currentGoalOpenId);
         mobileTitle.textContent = g ? g.title : 'Goal';
-      } else if (state.currentView === 'newSession') {
-        menuBtn.style.display = 'none';
-        backBtn.style.display = 'flex';
-        mobileTitle.textContent = 'New Session';
-      } else if (state.currentView === 'newGoal') {
-        menuBtn.style.display = 'none';
-        backBtn.style.display = 'flex';
-        mobileTitle.textContent = 'New Goal';
       } else {
         menuBtn.style.display = 'flex';
         backBtn.style.display = 'none';
@@ -5281,19 +4108,7 @@ Response format:
     }
     
     function goBack() {
-      if (state.currentView === 'newSession' || state.currentView === 'newGoal') {
-        showOverview();
-      } else if (state.currentView === 'chat' && state.currentSession) {
-        // Check if session belongs to a goal - go back to goal view
-        const goal = getGoalForSession(state.currentSession.key);
-        if (goal) {
-          openGoal(goal.id);
-        } else {
-          showOverview();
-        }
-      } else {
-        showOverview();
-      }
+      showOverview();
     }
     
     // ═══════════════════════════════════════════════════════════════
@@ -5304,323 +4119,17 @@ Response format:
       state.currentSession = null;
       localStorage.removeItem('sharp_current_session');
       
-      hideAllViews();
       document.getElementById('overviewView').classList.add('active');
+      document.getElementById('chatView').classList.remove('active');
+      document.getElementById('goalView').classList.remove('active');
       document.getElementById('mainTitle').textContent = 'Dashboard';
       document.getElementById('mainSubtitle').textContent = '';
       document.getElementById('headerAction').style.display = 'none';
       document.getElementById('headerStatusIndicator').style.display = 'none';
       
       renderSessions();
-      renderCondos();  // v2 sidebar
-      updateNavActive('dashboard');  // v2 nav
       updateMobileHeader();
       closeSidebar();
-    }
-    
-    // ═══════════════════════════════════════════════════════════════
-    // V2 CHAT VIEW FUNCTIONS
-    // ═══════════════════════════════════════════════════════════════
-    
-    function updateChatBreadcrumbs() {
-      if (!state.currentSession) return;
-      
-      const session = state.currentSession;
-      const sessionKey = session.key;
-      
-      // Extract agent from session key (agent:main:...)
-      const agentMatch = sessionKey.match(/^agent:([^:]+):/);
-      const agentId = agentMatch ? agentMatch[1] : 'main';
-      
-      // Get goal for this session
-      const goal = getGoalForSession(sessionKey);
-      
-      // Update breadcrumbs
-      const breadcrumbGoal = document.getElementById('breadcrumbGoal');
-      const breadcrumbCondo = document.getElementById('breadcrumbCondo');
-      
-      if (goal) {
-        breadcrumbGoal.textContent = goal.title || 'Goal';
-        breadcrumbGoal.style.display = '';
-        breadcrumbGoal.onclick = () => openGoal(goal.id);
-        document.querySelectorAll('#chatBreadcrumbs .v2-breadcrumb-sep')[1]?.style.setProperty('display', '');
-      } else {
-        breadcrumbGoal.style.display = 'none';
-        document.querySelectorAll('#chatBreadcrumbs .v2-breadcrumb-sep')[1]?.style.setProperty('display', 'none');
-      }
-      
-      // Update agent badge
-      const agentBadge = document.getElementById('sessionAgentBadge');
-      agentBadge.textContent = agentId;
-      agentBadge.setAttribute('data-agent', agentId);
-      
-      // Update session key in breadcrumb
-      const sessionPart = sessionKey.split(':').slice(-2).join(':');
-      document.getElementById('sessionBreadcrumbKey').textContent = sessionPart.length > 20 
-        ? sessionPart.slice(0, 20) + '...' 
-        : sessionPart;
-    }
-    
-    function updateChatDetailPanel() {
-      if (!state.currentSession) return;
-      
-      const session = state.currentSession;
-      const sessionKey = session.key;
-      
-      // Extract agent
-      const agentMatch = sessionKey.match(/^agent:([^:]+):/);
-      const agentId = agentMatch ? agentMatch[1] : 'main';
-      const agent = state.agents.find(a => a.id === agentId);
-      const agentName = agent?.identity?.name || agentId;
-      
-      // Get goal
-      const goal = getGoalForSession(sessionKey);
-      
-      // Update detail panel
-      document.getElementById('detailAgent').textContent = `${agentName} (${agentId})`;
-      document.getElementById('detailSessionKey').textContent = sessionKey;
-      
-      const goalEl = document.getElementById('detailGoal');
-      if (goal) {
-        goalEl.textContent = goal.title || 'Untitled';
-        goalEl.style.color = '';
-        goalEl.style.cursor = 'pointer';
-      } else {
-        goalEl.textContent = 'Not assigned — click to assign';
-        goalEl.style.color = 'var(--text-muted)';
-        goalEl.style.cursor = 'pointer';
-      }
-      
-      // Stats
-      const createdAt = session.createdAt || session.updatedAt || Date.now();
-      const startDate = new Date(createdAt);
-      document.getElementById('detailStarted').textContent = startDate.toLocaleDateString([], { 
-        month: 'short', 
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-      
-      document.getElementById('detailMessages').textContent = session.messageCount || '-';
-      document.getElementById('detailTokens').textContent = (session.totalTokens || 0).toLocaleString();
-      document.getElementById('detailModel').textContent = session.model?.split('/').pop() || 'unknown';
-      
-      // Count spawned sessions
-      const spawnedCount = state.sessions.filter(s => 
-        s.key.includes(':subagent:') && s.key.includes(sessionKey.split(':').slice(0, 3).join(':'))
-      ).length;
-      document.getElementById('detailSpawned').textContent = `${spawnedCount} session${spawnedCount !== 1 ? 's' : ''}`;
-    }
-    
-    function toggleChatDetailPanel() {
-      const panel = document.getElementById('chatDetailPanel');
-      panel.classList.toggle('hidden');
-    }
-    
-    function openDetailGoal() {
-      if (!state.currentSession) return;
-      const goal = getGoalForSession(state.currentSession.key);
-      if (goal) {
-        openGoal(goal.id);
-      } else {
-        showAttachSessionModal(state.currentSession.key);
-      }
-    }
-    
-    async function markGoalComplete() {
-      if (!state.currentSession) return;
-      const goal = getGoalForSession(state.currentSession.key);
-      if (!goal) {
-        showToast('Session not assigned to a goal', 'warning');
-        return;
-      }
-      await updateGoal(goal.id, { status: 'done' });
-      showToast('Goal marked complete!', 'success');
-      updateChatDetailPanel();
-    }
-    
-    async function markGoalIncomplete() {
-      if (!state.currentSession) return;
-      const goal = getGoalForSession(state.currentSession.key);
-      if (!goal) {
-        showToast('Session not assigned to a goal', 'warning');
-        return;
-      }
-      await updateGoal(goal.id, { status: 'active' });
-      showToast('Goal marked incomplete', 'info');
-      updateChatDetailPanel();
-    }
-    
-    // ═══════════════════════════════════════════════════════════════
-    // NEW SESSION VIEW
-    // ═══════════════════════════════════════════════════════════════
-    
-    state.selectedAgent = 'main';
-    
-    function showNewSessionView(condoId = null) {
-      state.currentView = 'newSession';
-      
-      // Hide other views
-      document.getElementById('overviewView').classList.remove('active');
-      document.getElementById('chatView').classList.remove('active');
-      document.getElementById('goalView').classList.remove('active');
-      document.getElementById('newGoalView').classList.remove('active');
-      document.getElementById('newSessionView').classList.add('active');
-      
-      // Populate goals dropdown
-      const select = document.getElementById('newSessionGoalSelect');
-      select.innerHTML = '<option value="">— Assign later —</option>';
-      state.goals.forEach(g => {
-        const opt = document.createElement('option');
-        opt.value = g.id;
-        opt.textContent = g.title || 'Untitled';
-        if (condoId && g.id === condoId) opt.selected = true;
-        select.appendChild(opt);
-      });
-      
-      // Reset form
-      state.selectedAgent = 'main';
-      document.querySelectorAll('.agent-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.agent === 'main');
-      });
-      document.getElementById('newSessionMessage').value = '';
-      document.getElementById('newSessionError').style.display = 'none';
-      
-      updateMobileHeader();
-    }
-    
-    function selectAgent(agentId) {
-      state.selectedAgent = agentId;
-      document.querySelectorAll('.agent-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.agent === agentId);
-      });
-    }
-    
-    async function submitNewSession() {
-      const message = document.getElementById('newSessionMessage').value.trim();
-      const goalId = document.getElementById('newSessionGoalSelect').value;
-      const agentId = state.selectedAgent || 'main';
-      const errEl = document.getElementById('newSessionError');
-      
-      if (!message) {
-        errEl.textContent = 'Please enter an initial message';
-        errEl.style.display = 'block';
-        return;
-      }
-      
-      errEl.style.display = 'none';
-      
-      try {
-        const timestamp = Date.now();
-        const sessionKey = `agent:${agentId}:webchat:${timestamp}`;
-        const idempotencyKey = `new-${agentId}-${timestamp}`;
-        
-        // Create session by sending first message
-        await rpcCall('chat.send', {
-          sessionKey,
-          message,
-          idempotencyKey
-        });
-        
-        // Assign to goal if selected
-        if (goalId) {
-          await fetch(`api/goals/${goalId}/sessions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionKey }),
-          });
-          await loadGoals();
-        }
-        
-        // Open the new session
-        await loadSessions();
-        openSession(sessionKey);
-        
-      } catch (err) {
-        errEl.textContent = 'Failed to create session: ' + err.message;
-        errEl.style.display = 'block';
-      }
-    }
-    
-    // ═══════════════════════════════════════════════════════════════
-    // NEW GOAL VIEW
-    // ═══════════════════════════════════════════════════════════════
-    
-    function showNewGoalView(condoId = null) {
-      state.currentView = 'newGoal';
-      
-      // Hide other views
-      document.getElementById('overviewView').classList.remove('active');
-      document.getElementById('chatView').classList.remove('active');
-      document.getElementById('goalView').classList.remove('active');
-      document.getElementById('newSessionView').classList.remove('active');
-      document.getElementById('newGoalView').classList.add('active');
-      
-      // Reset form
-      document.getElementById('newGoalTitle').value = '';
-      document.getElementById('newGoalDescription').value = '';
-      document.getElementById('newGoalError').style.display = 'none';
-      
-      // Reset radio selection
-      document.querySelector('input[name="startSession"][value="yes"]').checked = true;
-      updateRadioSelection(document.querySelector('input[name="startSession"][value="yes"]'));
-      
-      updateMobileHeader();
-    }
-    
-    function updateRadioSelection(input) {
-      document.querySelectorAll('.radio-option').forEach(opt => {
-        opt.classList.toggle('active', opt.contains(input) && input.checked);
-      });
-    }
-    
-    async function submitNewGoal() {
-      const title = document.getElementById('newGoalTitle').value.trim();
-      const description = document.getElementById('newGoalDescription').value.trim();
-      const startSession = document.querySelector('input[name="startSession"]:checked').value === 'yes';
-      const errEl = document.getElementById('newGoalError');
-      
-      if (!title) {
-        errEl.textContent = 'Please enter a goal title';
-        errEl.style.display = 'block';
-        return;
-      }
-      
-      errEl.style.display = 'none';
-      
-      try {
-        // Create goal
-        const res = await fetch('api/goals', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            title, 
-            notes: description || null 
-          }),
-        });
-        
-        if (!res.ok) throw new Error('Failed to create goal');
-        const data = await res.json();
-        const goalId = data?.goal?.id;
-        
-        await loadGoals();
-        
-        if (startSession && goalId) {
-          // Show new session view with this goal pre-selected
-          showNewSessionView(goalId);
-        } else if (goalId) {
-          // Open the new goal
-          openGoal(goalId);
-        } else {
-          showOverview();
-        }
-        
-        showToast('Goal created!', 'success');
-        
-      } catch (err) {
-        errEl.textContent = 'Failed to create goal: ' + err.message;
-        errEl.style.display = 'block';
-      }
     }
     
     async function openSession(key) {
@@ -5648,11 +4157,6 @@ Response format:
       }
       
       document.getElementById('overviewView').classList.remove('active');
-      document.getElementById('goalView').classList.remove('active');
-      const newSessionView = document.getElementById('newSessionView');
-      if (newSessionView) newSessionView.classList.remove('active');
-      const newGoalView = document.getElementById('newGoalView');
-      if (newGoalView) newGoalView.classList.remove('active');
       document.getElementById('chatView').classList.add('active');
       document.getElementById('mainTitle').textContent = getSessionName(session);
       document.getElementById('mainSubtitle').textContent = session.key;
@@ -5661,9 +4165,9 @@ Response format:
       document.getElementById('headerStatusIndicator').style.display = 'block';
       updateHeaderStatus();
       
-      // Update v2 breadcrumbs and detail panel
-      updateChatBreadcrumbs();
-      updateChatDetailPanel();
+      document.getElementById('sessionKeyDisplay').textContent = session.key;
+      document.getElementById('sessionModel').textContent = session.model?.split('/').pop() || 'unknown';
+      document.getElementById('sessionTokens').textContent = session.totalTokens?.toLocaleString() || '0';
       
       const actionBtn = document.getElementById('headerAction');
       if (session.key === 'agent:main:main') {
@@ -5674,7 +4178,6 @@ Response format:
       }
       
       renderSessions();
-      renderCondos();  // v2 sidebar
       updateSendButton();
       updateMobileHeader();
       closeSidebar();
