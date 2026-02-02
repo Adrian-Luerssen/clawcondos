@@ -3008,7 +3008,7 @@ If none fit well, include a suggestion with goalId:null and a proposed new goal 
         const goalsList = goals.map(g => `- "${g.title}" (id: ${g.id})`).join('\n');
         
         const message = `[WIZARD-CATEGORIZE]
-Analyze this session and suggest ONE best goal. Respond with ONLY JSON, no other text.
+Analyze this session and suggest the BEST goal. Respond with ONLY JSON, no other text.
 
 Session: ${sessionKey}
 Name: ${sessionName}
@@ -3018,9 +3018,11 @@ Recent messages: ${lastMessages.slice(0, 300)}
 Available goals:
 ${goalsList}
 
+IMPORTANT: If no existing goal is a strong match (>70% fit), suggest creating a NEW goal with a descriptive name based on the session topic. Don't force-fit sessions into poorly matching goals.
+
 Response format:
-If best match exists: {"goalId":"the-id","title":"Goal Title","reason":"why","isNew":false}
-If new goal better: {"goalId":null,"title":"Smart Name","reason":"why new","isNew":true}`;
+If existing goal fits well: {"goalId":"the-id","title":"Goal Title","reason":"why it fits","isNew":false}
+If new goal needed: {"goalId":null,"title":"Descriptive New Goal Name","reason":"why new goal is better","isNew":true}`;
 
         try {
           state.wizardPendingSessionKey = sessionKey;
