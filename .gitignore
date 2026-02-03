@@ -38,3 +38,6 @@ apps/prediction-market/
 
 # Local runtime registry/data
 .registry/
+
+# Env files
+.env
