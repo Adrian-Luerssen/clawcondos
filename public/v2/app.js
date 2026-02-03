@@ -3749,6 +3749,22 @@ Response format:
         navigateTo('dashboard');
       }
     }
+
+    function goBackFromGoal() {
+      // Prefer real history back if possible
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+
+      const goal = state.goals?.find(g => g.id === state.currentGoalOpenId);
+      const condoId = goal?.condoId || state.currentCondoId;
+      if (condoId) {
+        navigateTo(`condo/${encodeURIComponent(condoId)}`);
+      } else {
+        navigateTo('dashboard');
+      }
+    }
     
     function setBreadcrumbs(crumbs) {
       const container = document.getElementById('breadcrumbs');
@@ -5014,6 +5030,13 @@ Response format:
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/\*([^*]+)\*/g, '<em>$1</em>')
         .replace(/\n/g, '<br>');
+
+      // ClawCondos formatting helpers:
+      // If a line is ONLY a bold title and is surrounded by blank lines in the source,
+      // render it as a block heading with consistent spacing.
+      // Pattern from our recommended template: **Title**\n\n...
+      html = html
+        .replace(/(^|<br>)(<strong>[^<]+<\/strong>)(<br>){2}/g, '$1<div class="msg-heading">$2</div><div class="msg-gap"></div>');
       
       tokens.forEach((tokenHtml, idx) => {
         html = html.replace(`@@MEDIA_${idx}@@`, tokenHtml);
