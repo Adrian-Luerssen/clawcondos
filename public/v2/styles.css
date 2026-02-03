@@ -761,34 +761,145 @@ body {
 }
 
 /* =====================================================================
-   V2 CARD SYSTEM (flat/minimal, prototype parity)
-   Applies across Dashboard + Apps + Recurring + Sessions + Goals.
-   Overrides the more "glowy" card styles from /styles/main.css.
+   V2 CARD SYSTEM (prototype parity)
+   Match /mockups/v2-structure.html exactly for borders/backgrounds/radius.
    ===================================================================== */
 
-:root {
-  --v2-card-radius: 10px;
-  --v2-card-padding: 16px;
-  --v2-card-border: var(--border);
-  --v2-card-bg: var(--bg-card);
-  --v2-card-bg-hover: var(--bg-hover);
+/* Stats cards */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
 }
 
-/* Base card surfaces */
-.session-card,
-.app-card,
-.goal-card,
-.grid-card,
-.stat-card,
-.condo-card {
-  background: var(--v2-card-bg) !important;
-  border: 1px solid var(--v2-card-border) !important;
-  border-radius: var(--v2-card-radius) !important;
+.stat-card {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  padding: 14px 16px !important;
   box-shadow: none !important;
   transform: none !important;
 }
 
-/* Remove glow overlays from main.css */
+.stat-label {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: var(--text-muted) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+}
+
+.stat-value {
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  margin-top: 4px !important;
+  letter-spacing: -0.02em !important;
+}
+
+.stat-trend {
+  font-size: 11px !important;
+  color: var(--accent-green) !important;
+  margin-top: 2px !important;
+}
+
+/* Condos overview cards */
+.condos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.condo-card {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.condo-card:hover {
+  border-color: var(--accent-blue) !important;
+  background: var(--bg-card) !important;
+}
+
+.condo-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.condo-card-title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  flex: 1;
+}
+
+.condo-card-goals {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+}
+
+.condo-goal-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.condo-goal-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.condo-goal-status.pending { background: var(--accent-yellow); }
+.condo-goal-status.completed { background: var(--accent-green); }
+
+.condo-goal-name { flex: 1; }
+
+.condo-goal-name.done {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.condo-goal-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Grid cards (Apps/Recurring) */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.grid-card {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  box-shadow: none !important;
+}
+
+.grid-card:hover {
+  border-color: var(--accent-blue) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+}
+
+/* Remove legacy glow overlays */
 .session-card::after,
 .app-card::after,
 .goal-card::before {
@@ -796,23 +907,29 @@ body {
   display: none !important;
 }
 
-.session-card:hover,
-.app-card:hover,
-.goal-card:hover,
-.grid-card:hover,
-.stat-card:hover,
-.condo-card:hover {
-  background: var(--v2-card-bg-hover) !important;
-  border-color: var(--border) !important;
+/* Flatten legacy session/app cards to match same border/background */
+.session-card,
+.app-card,
+.goal-card {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
   box-shadow: none !important;
   transform: none !important;
 }
 
-/* Inner card typography - tighten to prototype */
+.session-card:hover,
+.app-card:hover,
+.goal-card:hover {
+  border-color: var(--accent-blue) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Typography */
 .card-name,
-.grid-card-title,
-.condo-card-title {
-  font-size: 13px !important;
+.grid-card-title {
+  font-size: 14px !important;
   font-weight: 600 !important;
   letter-spacing: -0.01em !important;
 }
@@ -822,25 +939,4 @@ body {
 .goal-card-sub {
   font-size: 12px !important;
   color: var(--text-secondary) !important;
-}
-
-/* Card icon blocks should be flatter (no accent scaling/glow) */
-.card-icon {
-  width: 38px !important;
-  height: 38px !important;
-  background: var(--bg-dark) !important;
-  border: 1px solid var(--border-subtle) !important;
-  border-radius: 10px !important;
-  transform: none !important;
-}
-
-.session-card:hover .card-icon,
-.app-card:hover .card-icon {
-  transform: none !important;
-  border-color: var(--border-subtle) !important;
-}
-
-/* Grid spacing */
-.cards-grid {
-  gap: 14px !important;
 }
