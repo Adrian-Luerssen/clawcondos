@@ -19,23 +19,21 @@
   --accent-purple: #a78bfa;
   --accent-cyan: #22d3ee;
 
+  /* Back-compat aliases used by legacy styles/main.css.
+     IMPORTANT: never self-reference (breaks variables -> transparent cards). */
   --bg: var(--bg-dark);
-  --bg-elevated: var(--bg-elevated);
   --bg-panel: var(--bg-sidebar);
-  --bg-hover: var(--bg-hover);
   --bg-active: #1f2940;
   --bg-input: #0d1117;
-  --bg-card: var(--bg-card);
-  --border: var(--border);
-  --border-subtle: var(--border-subtle);
+
   --text: var(--text-primary);
-  --text-secondary: var(--text-secondary);
   --text-dim: var(--text-muted);
-  --text-muted: var(--text-muted);
+
   --accent: var(--accent-blue);
   --accent-hover: #7db8fc;
   --accent-muted: rgba(96, 165, 250, 0.15);
   --accent-glow: rgba(96, 165, 250, 0.25);
+
   --green: var(--accent-green);
   --yellow: var(--accent-yellow);
   --red: var(--accent-red);
