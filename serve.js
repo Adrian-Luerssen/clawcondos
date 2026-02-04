@@ -10,6 +10,8 @@ import { createServer, request as httpRequest } from 'http';
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, readdirSync } from 'fs';
 import { join, extname, resolve as resolvePath } from 'path';
 import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
+import crypto from 'crypto';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const PORT = parseInt(process.argv[2]) || 9000;
@@ -25,6 +27,14 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
+
+  // Voice notes / uploads
+  '.webm': 'audio/webm',
+  '.ogg': 'audio/ogg',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.txt': 'text/plain',
 };
 
 // Load apps registry
@@ -86,6 +96,123 @@ function saveGoalsStore(store) {
 function json(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(body));
+}
+
+function ensureDir(p) {
+  if (!existsSync(p)) mkdirSync(p, { recursive: true });
+}
+
+async function readRawBody(req, maxBytes = 25 * 1024 * 1024) {
+  const chunks = [];
+  let total = 0;
+  for await (const c of req) {
+    total += c.length;
+    if (total > maxBytes) throw new Error('Body too large');
+    chunks.push(c);
+  }
+  return Buffer.concat(chunks);
+}
+
+function parseMultipartSingleFile(req, bodyBuf) {
+  const ct = String(req.headers['content-type'] || '');
+  const m = ct.match(/boundary=(.+)$/i);
+  if (!m) throw new Error('Missing multipart boundary');
+  const boundary = m[1].replace(/^"|"$/g, '');
+  const sep = Buffer.from(`--${boundary}`);
+
+  // Split parts
+  const parts = [];
+  let start = bodyBuf.indexOf(sep);
+  while (start !== -1) {
+    const next = bodyBuf.indexOf(sep, start + sep.length);
+    if (next === -1) break;
+    const part = bodyBuf.slice(start + sep.length, next);
+    parts.push(part);
+    start = next;
+  }
+
+  for (const rawPart of parts) {
+    // trim leading CRLF
+    let part = rawPart;
+    if (part.slice(0, 2).toString() === '\r\n') part = part.slice(2);
+    const headerEnd = part.indexOf(Buffer.from('\r\n\r\n'));
+    if (headerEnd === -1) continue;
+    const headerText = part.slice(0, headerEnd).toString('utf-8');
+    const content = part.slice(headerEnd + 4);
+    const cd = headerText.match(/content-disposition:\s*form-data;([^\r\n]+)/i);
+    if (!cd) continue;
+
+    const nameMatch = headerText.match(/name="([^"]+)"/i);
+    const fieldName = nameMatch ? nameMatch[1] : '';
+    const fnMatch = headerText.match(/filename="([^"]*)"/i);
+    const filename = fnMatch ? fnMatch[1] : '';
+    const typeMatch = headerText.match(/content-type:\s*([^\r\n]+)/i);
+    const mimeType = typeMatch ? typeMatch[1].trim() : 'application/octet-stream';
+
+    // Drop trailing CRLF (multipart parts typically end with \r\n)
+    const fileBuf = (content.length >= 2 && content[content.length - 2] === 13 && content[content.length - 1] === 10)
+      ? content.slice(0, -2)
+      : content;
+
+    if (fieldName === 'file' && filename) {
+      return { filename, mimeType, buffer: fileBuf };
+    }
+  }
+
+  throw new Error('No file found in multipart body');
+}
+
+function safeExtFromMime(mime, filename) {
+  const lower = String(filename || '').toLowerCase();
+  if (lower.endsWith('.webm')) return '.webm';
+  if (lower.endsWith('.m4a')) return '.m4a';
+  if (lower.endsWith('.mp3')) return '.mp3';
+  if (lower.endsWith('.wav')) return '.wav';
+  if (lower.endsWith('.ogg')) return '.ogg';
+  if (String(mime).includes('webm')) return '.webm';
+  if (String(mime).includes('ogg')) return '.ogg';
+  if (String(mime).includes('mpeg')) return '.mp3';
+  if (String(mime).includes('wav')) return '.wav';
+  if (String(mime).includes('mp4') || String(mime).includes('m4a')) return '.m4a';
+  return extname(filename || '') || '.bin';
+}
+
+function whisperTranscribeLocal(filePath) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      filePath,
+      '--model', process.env.CLAWCONDOS_WHISPER_MODEL || 'base',
+      '--device', process.env.CLAWCONDOS_WHISPER_DEVICE || 'cpu',
+      '--output_format', 'txt',
+      '--output_dir', join(__dirname, 'media', 'voice', 'transcripts')
+    ];
+    ensureDir(join(__dirname, 'media', 'voice', 'transcripts'));
+    const p = spawn('whisper', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    let timedOut = false;
+
+    const timeoutMs = Number(process.env.CLAWCONDOS_WHISPER_TIMEOUT_MS || 120_000);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { p.kill('SIGKILL'); } catch {}
+    }, timeoutMs);
+
+    p.stderr.on('data', d => { stderr += d.toString('utf-8'); });
+    p.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    p.on('close', (code, signal) => {
+      clearTimeout(timer);
+      if (timedOut) return reject(new Error(`whisper timed out after ${timeoutMs}ms`));
+      if (code !== 0) return reject(new Error(`whisper failed (code ${code}${signal ? `, signal ${signal}` : ''}): ${stderr.slice(-500)}`));
+      // whisper writes <basename>.txt
+      const base = filePath.split('/').pop().replace(/\.[^.]+$/, '');
+      const outPath = join(__dirname, 'media', 'voice', 'transcripts', `${base}.txt`);
+      const text = safeReadFile(outPath, 500_000) || '';
+      resolve(text.trim());
+    });
+  });
 }
 
 async function readJsonBody(req) {
@@ -226,6 +353,38 @@ function proxyToApp(req, res, app, path) {
     console.error(`Proxy error for ${app.id}:`, err.message);
     res.writeHead(503);
     res.end(`App "${app.name}" is offline. Start it with: ${app.startCommand}`);
+  });
+
+  req.pipe(proxyReq, { end: true });
+}
+
+// Proxy to Sharp media-upload service (apps/media-upload) which has robust multipart parsing.
+function proxyToMediaUpload(req, res, pathname, search) {
+  // Map /media-upload/* → service paths
+  let targetPath = pathname;
+  if (targetPath === '/media-upload' || targetPath === '/media-upload/') targetPath = '/upload';
+  if (targetPath.startsWith('/media-upload/')) targetPath = targetPath.slice('/media-upload'.length);
+  if (targetPath === '' || targetPath === '/') targetPath = '/upload';
+
+  const MEDIA_UPLOAD_HOST = process.env.MEDIA_UPLOAD_HOST || 'localhost';
+  const MEDIA_UPLOAD_PORT = Number(process.env.MEDIA_UPLOAD_PORT || 18796);
+
+  const options = {
+    hostname: MEDIA_UPLOAD_HOST,
+    port: MEDIA_UPLOAD_PORT,
+    path: targetPath + (search || ''),
+    method: req.method,
+    headers: { ...req.headers, host: `${MEDIA_UPLOAD_HOST}:${MEDIA_UPLOAD_PORT}` },
+  };
+
+  const proxyReq = httpRequest(options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res, { end: true });
+  });
+
+  proxyReq.on('error', (err) => {
+    console.error('Media-upload proxy error:', err.message);
+    json(res, 503, { ok: false, error: 'media-upload service unavailable' });
   });
 
   req.pipe(proxyReq, { end: true });
@@ -529,6 +688,100 @@ const server = createServer(async (req, res) => {
     const mapping = store.sessionIndex?.[sessionKey] || null;
     json(res, 200, { mapping });
     return;
+  }
+
+  // Media upload (for voice notes + images)
+  // Health/probe endpoint (some browsers/extensions do HEAD/GET /media-upload/)
+  if ((pathname === '/media-upload' || pathname === '/media-upload/' || pathname === '/media-upload/health')
+      && (req.method === 'GET' || req.method === 'HEAD')) {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  // POST /media-upload/upload (multipart/form-data with field "file")
+  if (pathname === '/media-upload/upload' && req.method === 'POST') {
+    try {
+      const body = await readRawBody(req, 25 * 1024 * 1024);
+      const file = parseMultipartSingleFile(req, body);
+
+      const ext = safeExtFromMime(file.mimeType, file.filename);
+      const id = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
+      const dir = join(__dirname, 'media', 'voice');
+      ensureDir(dir);
+      const outName = `upload-${id}${ext}`;
+      const outPath = join(dir, outName);
+      writeFileSync(outPath, file.buffer);
+
+      const sizeBytes = file.buffer?.length || 0;
+      const magic = sizeBytes >= 4 ? file.buffer.slice(0, 4).toString('hex') : '';
+      console.log(`media-upload :: file=${file.filename} mime=${file.mimeType} bytes=${sizeBytes} magic=${magic} -> ${outName}`);
+
+      json(res, 200, {
+        ok: true,
+        url: `/media/voice/${outName}`,
+        serverPath: outPath,
+        mimeType: file.mimeType,
+        fileName: file.filename,
+        sizeBytes,
+      });
+      return;
+    } catch (e) {
+      json(res, 400, { ok: false, error: e?.message || String(e) });
+      return;
+    }
+  }
+
+  // Legacy proxy to a dedicated service (:18796), disabled by default.
+  if ((pathname === '/media-upload' || pathname.startsWith('/media-upload/')) && process.env.ENABLE_MEDIA_UPLOAD_PROXY === '1') {
+    proxyToMediaUpload(req, res, pathname, url.search);
+    return;
+  }
+
+  // Whisper transcription
+  if (pathname === '/api/whisper/health' && req.method === 'GET') {
+    json(res, 200, { ok: true });
+    return;
+  }
+
+  // GET /api/whisper/transcribe?path=<serverPath>
+  if (pathname === '/api/whisper/transcribe' && req.method === 'GET') {
+    try {
+      const p = url.searchParams.get('path') || '';
+      if (!p) throw new Error('Missing path');
+      const full = resolvePath(p);
+      const allowedRoots = [
+        resolvePath(join(__dirname, 'media')),
+        resolvePath('/home/albert/clawd/apps/uploads'),
+      ];
+      if (!allowedRoots.some(r => full.startsWith(r))) throw new Error('Bad path');
+      const text = await whisperTranscribeLocal(full);
+      json(res, 200, { ok: true, text });
+      return;
+    } catch (e) {
+      json(res, 400, { ok: false, error: e?.message || String(e) });
+      return;
+    }
+  }
+
+  // Serve persisted media (voice notes)
+  if (pathname.startsWith('/media/')) {
+    try {
+      const rel = pathname.slice('/media/'.length);
+      const full = resolvePath(join(__dirname, 'media', rel));
+      const allowedRoot = resolvePath(join(__dirname, 'media'));
+      if (!full.startsWith(allowedRoot)) {
+        res.writeHead(400);
+        res.end('Bad path');
+        return;
+      }
+      serveFile(res, full);
+      return;
+    } catch {
+      res.writeHead(404);
+      res.end('Not Found');
+      return;
+    }
   }
 
   // API: /api/apps -> serve apps.json

@@ -2705,16 +2705,55 @@ function initAutoArchiveUI() {
         let queuedAttachments = undefined;
 
         if (hasMedia) {
-          try {
-            queuedAttachments = await MediaUpload.buildGatewayAttachments();
-            if (!queuedText) {
-              const files = MediaUpload.getPendingFiles();
-              queuedText = files.map(f => `[attachment: ${f.file.name}]`).join('\n');
+          const files = MediaUpload.getPendingFiles();
+          const hasAudio = files.some(f => f.fileType === 'audio');
+
+          if (hasAudio) {
+            try {
+              showToast('Uploading voice note…', 'info', 2000);
+              addChatMessageTo('goal', 'system', 'Uploading voice note…');
+
+              const uploaded = await MediaUpload.uploadAllPending(key);
+              const lines = [];
+              const transcripts = [];
+
+              showToast('Transcribing…', 'info', 2000);
+              addChatMessageTo('goal', 'system', 'Transcribing…');
+
+              for (const u of (uploaded || [])) {
+                if (!u || !u.ok) continue;
+                lines.push(`[attachment: ${u.url}]`);
+                const isAudio = String(u.mimeType || '').startsWith('audio/') || String(u.url || '').match(/\.(webm|m4a|mp3|wav|ogg)(\?|$)/i);
+                if (isAudio && u.serverPath) {
+                  try {
+                    const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}`);
+                    const data = await resp.json();
+                    if (data?.ok && data.text) transcripts.push(data.text.trim());
+                  } catch {}
+                }
+              }
+
+              const transcriptText = transcripts.filter(Boolean).join('\n\n');
+              const voiceBlock = [transcriptText || '', ...lines].filter(Boolean).join('\n\n');
+              queuedText = queuedText ? [queuedText, voiceBlock].filter(Boolean).join('\n\n') : voiceBlock;
+              queuedAttachments = undefined;
+              MediaUpload.clearFiles();
+            } catch (err) {
+              MediaUpload.clearFiles();
+              addChatMessageTo('goal', 'system', `Upload/transcribe error: ${err.message}`);
+              return;
             }
-            MediaUpload.clearFiles();
-          } catch (err) {
-            addChatMessageTo('goal', 'system', `Attachment prep error: ${err.message}`);
-            return;
+          } else {
+            try {
+              queuedAttachments = await MediaUpload.buildGatewayAttachments();
+              if (!queuedText) {
+                queuedText = files.map(f => `[attachment: ${f.file.name}]`).join('\n');
+              }
+              MediaUpload.clearFiles();
+            } catch (err) {
+              addChatMessageTo('goal', 'system', `Attachment prep error: ${err.message}`);
+              return;
+            }
           }
         }
 
@@ -2733,17 +2772,62 @@ function initAutoArchiveUI() {
       let attachments = undefined;
 
       if (hasMedia) {
-        try {
-          attachments = await MediaUpload.buildGatewayAttachments();
-          if (!finalMessage) {
-            const files = MediaUpload.getPendingFiles();
-            finalMessage = files.map(f => `[attachment: ${f.file.name}]`).join('\n');
+        const files = MediaUpload.getPendingFiles();
+        const hasAudio = files.some(f => f.fileType === 'audio');
+
+        if (hasAudio) {
+          try {
+            // Give visible feedback
+            showToast('Uploading voice note…', 'info', 2000);
+            addChatMessageTo('goal', 'system', 'Uploading voice note…');
+
+            const uploaded = await MediaUpload.uploadAllPending(key);
+            const lines = [];
+            const transcripts = [];
+
+            showToast('Transcribing…', 'info', 2000);
+            addChatMessageTo('goal', 'system', 'Transcribing…');
+
+            for (const u of (uploaded || [])) {
+              if (!u || !u.ok) continue;
+              lines.push(`[attachment: ${u.url}]`);
+
+              const isAudio = String(u.mimeType || '').startsWith('audio/') || String(u.url || '').match(/\.(webm|m4a|mp3|wav|ogg)(\?|$)/i);
+              if (isAudio && u.serverPath) {
+                try {
+                  const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}`);
+                  const data = await resp.json();
+                  if (data?.ok && data.text) transcripts.push(data.text.trim());
+                } catch {}
+              }
+            }
+
+            const transcriptText = transcripts.filter(Boolean).join('\n\n');
+            const voiceBlock = [transcriptText || '', ...lines].filter(Boolean).join('\n\n');
+
+            if (!finalMessage) finalMessage = voiceBlock;
+            else finalMessage = [finalMessage, voiceBlock].filter(Boolean).join('\n\n');
+
+            attachments = undefined;
+            MediaUpload.clearFiles();
+          } catch (err) {
+            MediaUpload.clearFiles();
+            box.insertAdjacentHTML('beforeend', `<div class="message system">Upload/transcribe error: ${escapeHtml(err.message)}</div>`);
+            box.scrollTop = box.scrollHeight;
+            return;
           }
-          MediaUpload.clearFiles();
-        } catch (err) {
-          box.insertAdjacentHTML('beforeend', `<div class="message system">Attachment prep error: ${escapeHtml(err.message)}</div>`);
-          box.scrollTop = box.scrollHeight;
-          return;
+        } else {
+          try {
+            attachments = await MediaUpload.buildGatewayAttachments();
+            if (!finalMessage) {
+              finalMessage = files.map(f => `[attachment: ${f.file.name}]`).join('\n');
+            }
+            MediaUpload.clearFiles();
+          } catch (err) {
+            box.insertAdjacentHTML('beforeend', `<div class="message system">Attachment prep error: ${escapeHtml(err.message)}</div>`);
+            box.scrollTop = box.scrollHeight;
+            return;
+          }
         }
       }
 
@@ -6083,16 +6167,63 @@ Response format:
         let queuedAttachments = undefined;
 
         if (hasMedia) {
-          try {
-            queuedAttachments = await MediaUpload.buildGatewayAttachments();
-            if (!queuedText) {
-              const files = MediaUpload.getPendingFiles();
-              queuedText = files.map(f => `[attachment: ${f.file.name}]`).join('\n');
+          const files = MediaUpload.getPendingFiles();
+          const hasAudio = files.some(f => f.fileType === 'audio');
+
+          // If audio is present while agent is busy, we STILL need to upload now.
+          // (Otherwise we lose the File object after clearing, and the later queued send can only do base64 attachments.)
+          if (hasAudio) {
+            try {
+              showToast('Uploading voice note…', 'info', 2000);
+              addChatMessage('system', 'Uploading voice note…');
+
+              const uploaded = await MediaUpload.uploadAllPending(sessionKey);
+              const lines = [];
+              const transcripts = [];
+
+              showToast('Transcribing…', 'info', 2000);
+              addChatMessage('system', 'Transcribing…');
+
+              for (const u of (uploaded || [])) {
+                if (!u || !u.ok) continue;
+                lines.push(`[attachment: ${u.url}]`);
+                const isAudio = String(u.mimeType || '').startsWith('audio/') || String(u.url || '').match(/\.(webm|m4a|mp3|wav|ogg)(\?|$)/i);
+                if (isAudio && u.serverPath) {
+                  try {
+                    const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}`);
+                    const data = await resp.json();
+                    if (data?.ok && data.text) transcripts.push(data.text.trim());
+                  } catch {}
+                }
+              }
+
+              const transcriptText = transcripts.filter(Boolean).join('\n\n');
+              const voiceBlock = [transcriptText || '', ...lines].filter(Boolean).join('\n\n');
+
+              if (!queuedText) queuedText = voiceBlock;
+              else queuedText = [queuedText, voiceBlock].filter(Boolean).join('\n\n');
+
+              // Voice path produces a pure-text queued message (no gateway attachments)
+              queuedAttachments = undefined;
+              MediaUpload.clearFiles();
+            } catch (err) {
+              MediaUpload.clearFiles();
+              addChatMessage('system', `Upload/transcribe error: ${err.message}`);
+              showToast(`Upload/transcribe error: ${err.message}`, 'error', 5000);
+              return;
             }
-            MediaUpload.clearFiles();
-          } catch (err) {
-            addChatMessage('system', `Attachment prep error: ${err.message}`);
-            return;
+          } else {
+            // Images only -> base64 attachments are fine to queue
+            try {
+              queuedAttachments = await MediaUpload.buildGatewayAttachments();
+              if (!queuedText) {
+                queuedText = files.map(f => `[attachment: ${f.file.name}]`).join('\n');
+              }
+              MediaUpload.clearFiles();
+            } catch (err) {
+              addChatMessage('system', `Attachment prep error: ${err.message}`);
+              return;
+            }
           }
         }
 
@@ -6109,22 +6240,78 @@ Response format:
       input.value = '';
       input.style.height = 'auto';
       
-      // Handle OpenClaw-native attachments (chat.send.attachments)
+      // Attachments:
+      // - For images we can still send base64 attachments to gateway.
+      // - For audio (voice notes) we MUST persist the file server-side so Whisper can access it.
       let finalMessage = text;
       let attachments = undefined;
 
       if (hasMedia) {
-        try {
-          attachments = await MediaUpload.buildGatewayAttachments();
-          // Optional: show a simple placeholder in the chat log (we don't embed base64)
-          if (!finalMessage) {
-            const files = MediaUpload.getPendingFiles();
-            finalMessage = files.map(f => `[attachment: ${f.file.name}]`).join('\n');
+        const files = MediaUpload.getPendingFiles();
+        const hasAudio = files.some(f => f.fileType === 'audio');
+
+        // If any audio is present: upload to Sharp first, transcribe locally, then send transcript + link.
+        if (hasAudio) {
+          // Give immediate user feedback (upload/transcribe can take time, esp. first run while Whisper model downloads)
+          state.isThinking = true;
+          setSessionStatus(sessionKey, 'thinking');
+          updateSendButton();
+          showToast('Uploading voice note…', 'info', 2000);
+          addChatMessage('system', 'Uploading voice note…');
+
+          try {
+            const uploaded = await MediaUpload.uploadAllPending(sessionKey);
+            // uploaded entries: { ok, url, serverPath, mimeType, fileName }
+            const lines = [];
+            const transcripts = [];
+
+            showToast('Transcribing…', 'info', 2000);
+            addChatMessage('system', 'Transcribing…');
+
+            for (const u of (uploaded || [])) {
+              if (!u || !u.ok) continue;
+              lines.push(`[attachment: ${u.url}]`);
+
+              const isAudio = String(u.mimeType || '').startsWith('audio/') || String(u.url || '').match(/\.(webm|m4a|mp3|wav|ogg)(\?|$)/i);
+              if (isAudio && u.serverPath) {
+                try {
+                  const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}`);
+                  const data = await resp.json();
+                  if (data?.ok && data.text) transcripts.push(data.text.trim());
+                } catch {}
+              }
+            }
+
+            const transcriptText = transcripts.filter(Boolean).join('\n\n');
+            if (!finalMessage) {
+              finalMessage = [transcriptText || '', ...lines].filter(Boolean).join('\n\n');
+            } else {
+              // append attachments + transcript under user text
+              finalMessage = [finalMessage, transcriptText, ...lines].filter(Boolean).join('\n\n');
+            }
+
+            MediaUpload.clearFiles();
+          } catch (err) {
+            // Unstick composer state if we fail before reaching processMessage()
+            state.isThinking = false;
+            setSessionStatus(sessionKey, 'idle');
+            updateSendButton();
+            addChatMessage('system', `Upload/transcribe error: ${err.message}`);
+            showToast(`Upload/transcribe error: ${err.message}`, 'error', 5000);
+            return;
           }
-          MediaUpload.clearFiles();
-        } catch (err) {
-          addChatMessage('system', `Attachment prep error: ${err.message}`);
-          return;
+        } else {
+          // images only -> gateway attachments
+          try {
+            attachments = await MediaUpload.buildGatewayAttachments();
+            if (!finalMessage) {
+              finalMessage = files.map(f => `[attachment: ${f.file.name}]`).join('\n');
+            }
+            MediaUpload.clearFiles();
+          } catch (err) {
+            addChatMessage('system', `Attachment prep error: ${err.message}`);
+            return;
+          }
         }
       }
 
@@ -7075,12 +7262,40 @@ Response format:
       }
 
       // Mount reusable composers (chat + goal)
+      // The composer mounts dynamically, so MediaUpload sometimes runs before the elements exist.
+      // We retry the mount a few times to guarantee the file input is wired.
       try {
-        mountComposer('composerMountChat', '', {
+        const ensureMounted = (mountId, prefix, opts) => {
+          let attempts = 0;
+          const maxAttempts = 30; // ~3s
+          const tick = () => {
+            attempts++;
+            try {
+              mountComposer(mountId, prefix, opts);
+              // If MediaUpload exposes a boolean return, use it to detect missing DOM.
+              if (window.MediaUpload && typeof window.MediaUpload.mount === 'function') {
+                const ok = window.MediaUpload.mount({
+                  prefix,
+                  viewId: (prefix === 'goal') ? 'goalChatPanel' : 'chatView',
+                  inputId: prefix ? `${prefix}_chatInput` : 'chatInput',
+                  fileInputId: prefix ? `${prefix}_mediaFileInput` : 'mediaFileInput',
+                  previewContainerId: prefix ? `${prefix}_mediaPreviewContainer` : 'mediaPreviewContainer',
+                  dropOverlayId: prefix ? `${prefix}_dropOverlay` : 'dropOverlay',
+                });
+                if (ok) return;
+              }
+            } catch {}
+            if (attempts < maxAttempts) setTimeout(tick, 100);
+          };
+          tick();
+        };
+
+        ensureMounted('composerMountChat', '', {
           onSend: () => sendMessage(),
           onKeyDown: (e) => handleChatKey(e),
         });
-        mountComposer('composerMountGoal', 'goal', {
+
+        ensureMounted('composerMountGoal', 'goal', {
           onSend: () => sendGoalChatMessage(),
           onKeyDown: (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -7152,4 +7367,5 @@ Response format:
       }, 30000);
     }
     
+    try { console.log('[ClawCondos] build', window.__v2_build); } catch {}
     init().catch((e) => console.error('[init] failed', e));
