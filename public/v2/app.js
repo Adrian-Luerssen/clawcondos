@@ -1386,7 +1386,15 @@ function initAutoArchiveUI() {
         if (state.currentSession?.key === sessionKey && message?.content) {
           const text = extractText(message.content);
           if (text) {
-            updateStreamingMessage(runId, text);
+            updateStreamingMessage(runId, text, '');
+          }
+        }
+
+        // Also stream into goal view if it's showing the same session
+        if (state.currentView === 'goal' && state.goalChatSessionKey === sessionKey && message?.content) {
+          const text = extractText(message.content);
+          if (text) {
+            updateStreamingMessage(runId, text, 'goal');
           }
         }
       } else if (runState === 'final') {
@@ -1421,11 +1429,22 @@ function initAutoArchiveUI() {
           if (message?.content) {
             const text = extractText(message.content);
             if (text) {
-              finalizeStreamingMessage(runId, text);
+              finalizeStreamingMessage(runId, text, '');
             }
           } else {
-            // No content in final, just remove thinking indicator
-            removeStreamingMessage(runId);
+            removeStreamingMessage(runId, '');
+          }
+        }
+
+        // Finalize in goal view if it's showing the same session
+        if (state.currentView === 'goal' && state.goalChatSessionKey === sessionKey) {
+          if (message?.content) {
+            const text = extractText(message.content);
+            if (text) {
+              finalizeStreamingMessage(runId, text, 'goal');
+            }
+          } else {
+            removeStreamingMessage(runId, 'goal');
           }
         }
       } else if (runState === 'error' || runState === 'aborted') {
@@ -1436,46 +1455,55 @@ function initAutoArchiveUI() {
         if (state.currentSession?.key === sessionKey) {
           state.isThinking = false;
           updateSendButton();
-          removeStreamingMessage(runId);
+          removeStreamingMessage(runId, '');
           clearAllTools();  // Clear tool activity on error/abort
           const msg = data.errorMessage || data.stopReason || (runState === 'aborted' ? 'Run aborted' : 'Run failed');
           if (msg) {
-            // Make provider/network issues impossible to miss.
-            addChatMessage('system', `⚠️ ${msg}`);
+            addChatMessageTo('', 'system', `⚠️ ${msg}`);
             showToast(msg, /timeout|rate_limit|429/i.test(msg) ? 'warning' : 'error', 8000);
           }
+        }
+
+        if (state.currentView === 'goal' && state.goalChatSessionKey === sessionKey) {
+          removeStreamingMessage(runId, 'goal');
+          const msg = data.errorMessage || data.stopReason || (runState === 'aborted' ? 'Run aborted' : 'Run failed');
+          if (msg) addChatMessageTo('goal', 'system', `⚠️ ${msg}`);
         }
       }
     }
     
     // Typing indicator (bouncing dots)
-    function showTypingIndicator(runId) {
-      // Don't show if already have streaming content
+    function showTypingIndicator(runId, prefix = '') {
       if (document.getElementById(`streaming-${runId}`)) return;
-      
-      let el = document.getElementById(`typing-${runId}`);
-      if (el) return; // Already showing
-      
-      const container = document.getElementById('chatMessages');
+
+      const typingId = prefix ? `${prefix}-typing-${runId}` : `typing-${runId}`;
+      let el = document.getElementById(typingId);
+      if (el) return;
+
+      const containerId = prefix ? `${prefix}_chatMessages` : 'chatMessages';
+      const container = document.getElementById(containerId);
       if (!container) return;
-      
+
       el = document.createElement('div');
-      el.id = `typing-${runId}`;
+      el.id = typingId;
       el.className = 'typing-indicator';
       el.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
       container.appendChild(el);
-      scrollChatToBottom();
+
+      if (prefix) scrollChatPanelToBottom(prefix);
+      else scrollChatToBottom();
     }
     
-    function hideTypingIndicator(runId) {
-      const el = document.getElementById(`typing-${runId}`);
+    function hideTypingIndicator(runId, prefix = '') {
+      const typingId = prefix ? `${prefix}-typing-${runId}` : `typing-${runId}`;
+      const el = document.getElementById(typingId);
       if (el) el.remove();
     }
     
     // Streaming message management
-    function updateStreamingMessage(runId, text) {
+    function updateStreamingMessage(runId, text, prefix = '') {
       // Hide typing indicator when content arrives
-      hideTypingIndicator(runId);
+      hideTypingIndicator(runId, prefix);
 
       // Buffer streaming text and render at most once per animation frame.
       state.streamingBuffers.set(runId, text);
@@ -1487,13 +1515,13 @@ function initAutoArchiveUI() {
 
         let el = document.getElementById(`streaming-${runId}`);
         if (!el) {
-          // Remove old thinking indicator
-          const thinking = document.querySelector('.message.thinking');
+          // Remove old thinking indicator (scope to container)
+          const containerId = prefix ? `${prefix}_chatMessages` : 'chatMessages';
+          const container = document.getElementById(containerId);
+          if (!container) return;
+          const thinking = container.querySelector('.message.thinking');
           if (thinking) thinking.remove();
 
-          // Create streaming message element
-          const container = document.getElementById('chatMessages');
-          if (!container) return;
           el = document.createElement('div');
           el.id = `streaming-${runId}`;
           el.className = 'message assistant streaming';
@@ -1502,13 +1530,14 @@ function initAutoArchiveUI() {
         }
 
         el.innerHTML = `<div class="message-content">${formatMessage(latest)}<span class="streaming-cursor">▊</span></div>`;
-        scrollChatToBottom();
+        if (prefix) scrollChatPanelToBottom(prefix);
+        else scrollChatToBottom();
       });
 
       state.streamingRaf.set(runId, raf);
     }
     
-    function finalizeStreamingMessage(runId, text) {
+    function finalizeStreamingMessage(runId, text, prefix = '') {
       const el = document.getElementById(`streaming-${runId}`);
       if (el) {
         el.classList.remove('streaming');
@@ -1516,17 +1545,22 @@ function initAutoArchiveUI() {
         el.innerHTML = `<div class="message-content">${formatMessage(text)}</div><div class="message-time">${timeStr}</div>`;
       } else if (text) {
         // No streaming element, add final message
-        const thinking = document.querySelector('.message.thinking');
+        const containerId = prefix ? `${prefix}_chatMessages` : 'chatMessages';
+        const container = document.getElementById(containerId);
+        const thinking = container ? container.querySelector('.message.thinking') : document.querySelector('.message.thinking');
         if (thinking) thinking.remove();
-        addChatMessage('assistant', text);
+        addChatMessageTo(prefix, 'assistant', text);
       }
     }
     
-    function removeStreamingMessage(runId) {
+    function removeStreamingMessage(runId, prefix = '') {
       const el = document.getElementById(`streaming-${runId}`);
       if (el) el.remove();
-      hideTypingIndicator(runId);
-      const thinking = document.querySelector('.message.thinking');
+      hideTypingIndicator(runId, prefix);
+
+      const containerId = prefix ? `${prefix}_chatMessages` : 'chatMessages';
+      const container = document.getElementById(containerId);
+      const thinking = container ? container.querySelector('.message.thinking') : document.querySelector('.message.thinking');
       if (thinking) thinking.remove();
     }
     
@@ -5455,10 +5489,17 @@ Response format:
     }
     
     function addChatMessage(role, content, timestamp = null) {
-      const container = document.getElementById('chatMessages');
+      return addChatMessageTo('', role, content, timestamp);
+    }
+
+    function addChatMessageTo(prefix, role, content, timestamp = null) {
+      const containerId = prefix ? `${prefix}_chatMessages` : 'chatMessages';
+      const container = document.getElementById(containerId);
+      if (!container) return null;
+
       const msg = document.createElement('div');
       msg.className = `message ${role}`;
-      
+
       // Format content
       let contentHtml;
       const features = (config && config.features) ? config.features : {};
@@ -5469,22 +5510,35 @@ Response format:
       } else {
         contentHtml = escapeHtml(content);
       }
-      
+
       // Add timestamp
       const time = timestamp ? new Date(timestamp) : new Date();
       const timeStr = formatMessageTime(time);
-      
+
       msg.innerHTML = `<div class="message-content">${contentHtml}</div><div class="message-time">${timeStr}</div>`;
-      
       container.appendChild(msg);
 
-      // If user is scrolled up, track unseen count.
-      if (!state.chatAutoScroll && !isNearChatBottom(container)) {
-        state.chatUnseenCount = (state.chatUnseenCount || 0) + 1;
-        setJumpToLatestVisible(true);
+      // Unseen tracking
+      if (prefix === 'goal') {
+        if (!state.goalChatAutoScroll && !isNearChatBottom(container)) {
+          state.goalChatUnseenCount = (state.goalChatUnseenCount || 0) + 1;
+          const jump = document.getElementById('goal_jumpToLatest');
+          if (jump) jump.style.display = 'flex';
+          const cnt = document.getElementById('goal_jumpToLatestCount');
+          if (cnt) {
+            cnt.textContent = String(state.goalChatUnseenCount);
+            cnt.style.display = 'inline-flex';
+          }
+        }
+        scrollChatPanelToBottom('goal');
+      } else {
+        if (!state.chatAutoScroll && !isNearChatBottom(container)) {
+          state.chatUnseenCount = (state.chatUnseenCount || 0) + 1;
+          setJumpToLatestVisible(true);
+        }
+        scrollChatToBottom();
       }
 
-      scrollChatToBottom();
       return msg;
     }
     
