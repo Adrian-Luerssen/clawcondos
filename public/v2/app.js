@@ -5881,25 +5881,10 @@ Response format:
       mount.innerHTML = composerTemplate(prefix);
 
       const inputId = prefix ? `${prefix}_chatInput` : 'chatInput';
-      const sendId = prefix ? `${prefix}_sendBtn` : 'sendBtn';
 
-      const input = document.getElementById(inputId);
-      const send = document.getElementById(sendId);
-
-      if (input) {
-        input.addEventListener('keydown', (e) => {
-          if (opts.onKeyDown) return opts.onKeyDown(e);
-          handleChatKey(e);
-        });
-        input.addEventListener('input', () => autoResize(input));
-      }
-
-      if (send) {
-        send.addEventListener('click', () => {
-          if (opts.onSend) return opts.onSend();
-          sendMessage();
-        });
-      }
+      // NOTE: We deliberately do NOT attach send/keydown listeners here.
+      // The composer markup includes inline handlers as a hard fallback.
+      // Attaching listeners here can double-fire (send twice + "Nothing to send").
 
       // Mount MediaUpload + VoiceRecorder onto this composer if supported
       try {
