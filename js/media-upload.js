@@ -398,14 +398,28 @@ const MediaUpload = (() => {
     let attached = false;
 
     for (const item of items) {
-      if (item.kind === 'file') {
-        const file = item.getAsFile();
-        if (!file) continue;
+      if (item.kind !== 'file') continue;
 
-        if (getFileType(file.type, file.name)) {
-          const entry = addFile(file);
-          if (entry) attached = true;
+      const file = item.getAsFile();
+      if (!file) continue;
+
+      const mime = (item.type || file.type || '').trim();
+      const nameGuess = (file.name || (mime.startsWith('image/') ? 'clipboard.png' : (mime.startsWith('audio/') ? 'clipboard.webm' : ''))).trim();
+
+      // Some browsers provide a File with empty type/name for clipboard images.
+      // Re-wrap it into a new File with a sensible name/type so validation succeeds.
+      let fixedFile = file;
+      if ((!file.type && mime) || (!file.name && nameGuess)) {
+        try {
+          fixedFile = new File([file], nameGuess || file.name || 'clipboard', { type: mime || file.type || '' });
+        } catch {
+          // ignore; fallback to original file
         }
+      }
+
+      if (getFileType(fixedFile.type, fixedFile.name)) {
+        const entry = addFile(fixedFile);
+        if (entry) attached = true;
       }
     }
 
