@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,520;9..144,720&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="/v2/styles.css">
+  <link rel="stylesheet" href="/v2/styles.css?v=10">
   <link rel="stylesheet" href="/v2/agents.css">
   <link rel="stylesheet" href="/v2/dashboard-overrides.css">
   <link rel="stylesheet" href="/styles/media-upload.css">
@@ -33,6 +33,24 @@
       </div>
       <button class="form-btn" onclick="doLogin()">Connect</button>
       <div class="form-error" id="loginError"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="connectionDetailsModal">
+    <div class="modal" style="max-width: 760px;">
+      <h2 class="modal-title">Connection details</h2>
+      <p class="modal-desc">Useful when “Connecting…” gets stuck. Copy/paste this into chat/logs.</p>
+      <div class="form-group">
+        <label class="form-label">Diagnostics</label>
+        <pre id="connectionDetailsText" style="white-space: pre-wrap; word-break: break-word; max-height: 55vh; overflow:auto; background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; padding: 12px;"></pre>
+      </div>
+      <div style="display:flex; gap:10px; margin-top: 10px; align-items:center;">
+        <button class="form-btn" onclick="copyConnectionDetailsToClipboard()">📋 Copy</button>
+        <button class="form-btn" style="background: var(--bg-input); border: 1px solid var(--border);" onclick="showLoginModal()">Open login</button>
+        <div style="flex:1"></div>
+        <button class="form-btn" style="background: var(--bg-input); border: 1px solid var(--border);" onclick="hideConnectionDetailsModal()">Close</button>
+      </div>
+      <div class="form-error" id="connectionDetailsError" style="display:none;"></div>
     </div>
   </div>
 
@@ -238,7 +256,7 @@
 
       <div class="sidebar-footer">
         <a href="/control/" class="control-ui-btn" title="Open Clawdbot Control UI">🤖 Clawdbot UI</a>
-        <div class="connection-status" onclick="showLoginModal()">
+        <div class="connection-status" onclick="showConnectionDetailsModal(event)" title="Click for connection details (Shift-click to open login)">
           <span class="connection-dot" id="connectionDot" style="background: var(--yellow);"></span>
           <span id="connectionText">Connecting...</span>
           <span style="margin-left: auto; font-size: 10px; color: var(--text-muted);">v2</span>
@@ -585,6 +603,6 @@
   <!-- Load shared modules BEFORE app.js so it can mount them dynamically -->
   <script src="/js/media-upload.js"></script>
   <script src="/js/voice-recorder.js"></script>
-  <script src="/v2/app.js"></script>
+  <script src="/v2/app.js?v=10"></script>
 </body>
 </html>

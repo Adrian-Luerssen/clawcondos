@@ -91,6 +91,10 @@
       wsLastMessageAt: 0,
       wsReconnectAttempts: 0,
       connected: false,
+      connectionStatus: 'connecting',
+      wsLastClose: null,          // { code, reason, at }
+      wsLastError: null,          // string
+      wsLastConnectAttemptAt: 0,  // ms
       connectNonce: null,
       connectSent: false,
       rpcIdCounter: 0,
@@ -936,6 +940,7 @@ function initAutoArchiveUI() {
       
       state.connectNonce = null;
       state.connectSent = false;
+      state.wsLastConnectAttemptAt = Date.now();
       setConnectionStatus('connecting');
       
       // Build WebSocket URL
@@ -973,10 +978,13 @@ function initAutoArchiveUI() {
       };
       
       state.ws.onerror = (err) => {
+        const msg = (err && (err.message || err.type)) ? String(err.message || err.type) : 'WebSocket error';
+        state.wsLastError = msg;
         console.error('[WS] Error:', err);
       };
       
       state.ws.onclose = (event) => {
+        state.wsLastClose = { code: event?.code, reason: event?.reason || '', at: Date.now() };
         console.log('[WS] Closed:', event.code, event.reason);
         state.connected = false;
         state.ws = null;
@@ -1663,6 +1671,7 @@ function initAutoArchiveUI() {
     // CONNECTION STATUS
     // ═══════════════════════════════════════════════════════════════
     function setConnectionStatus(status) {
+      state.connectionStatus = status;
       const dot = document.getElementById('connectionDot');
       const text = document.getElementById('connectionText');
       
@@ -1799,6 +1808,94 @@ function initAutoArchiveUI() {
       indicator.setAttribute('data-tooltip', getStatusTooltip(status));
     }
     
+    // ═══════════════════════════════════════════════════════════════
+    // CONNECTION DIAGNOSTICS
+    // ═══════════════════════════════════════════════════════════════
+    function computeWsUrlForDiagnostics() {
+      let wsUrl = (state.gatewayUrl || '').replace(/^http/, 'ws');
+      if (wsUrl && !wsUrl.includes(':18789')) {
+        wsUrl = wsUrl.replace(/\/?$/, '/clawcondos-ws');
+      }
+      return wsUrl;
+    }
+
+    function buildConnectionDiagnosticsText() {
+      const wsUrl = computeWsUrlForDiagnostics();
+      const lines = [];
+      lines.push('ClawCondos connection diagnostics');
+      lines.push('time: ' + new Date().toISOString());
+      lines.push('page: ' + window.location.href);
+      lines.push('gatewayUrl: ' + (state.gatewayUrl || '')); 
+      lines.push('wsUrl: ' + (wsUrl || ''));
+      lines.push('status: ' + (state.connectionStatus || (state.connected ? 'connected' : 'unknown')));
+      lines.push('connected: ' + String(!!state.connected));
+      lines.push('reconnectAttempts: ' + String(state.wsReconnectAttempts || 0));
+      lines.push('lastConnectAttemptAt: ' + (state.wsLastConnectAttemptAt ? new Date(state.wsLastConnectAttemptAt).toISOString() : 'n/a'));
+      lines.push('lastMessageAt: ' + (state.wsLastMessageAt ? new Date(state.wsLastMessageAt).toISOString() : 'n/a'));
+      if (state.wsLastClose) {
+        lines.push('lastClose: ' + JSON.stringify({
+          code: state.wsLastClose.code,
+          reason: state.wsLastClose.reason,
+          at: new Date(state.wsLastClose.at).toISOString()
+        }));
+      } else {
+        lines.push('lastClose: n/a');
+      }
+      lines.push('lastError: ' + (state.wsLastError || 'n/a'));
+      lines.push('protocol: ' + String(WS_PROTOCOL_VERSION));
+      lines.push('client: webchat-ui / ClawCondos Dashboard v2.0.0');
+      lines.push('tokenPresent: ' + String(!!state.token));
+      lines.push('userAgent: ' + (navigator.userAgent || ''));
+      return lines.join('\n');
+    }
+
+    function showConnectionDetailsModal(ev) {
+      // Power users: Shift-click goes straight to login.
+      if (ev && ev.shiftKey) {
+        showLoginModal();
+        return;
+      }
+      const modal = document.getElementById('connectionDetailsModal');
+      const pre = document.getElementById('connectionDetailsText');
+      const err = document.getElementById('connectionDetailsError');
+      if (!modal || !pre) return;
+      if (err) { err.style.display = 'none'; err.textContent = ''; }
+      pre.textContent = buildConnectionDiagnosticsText();
+      modal.classList.remove('hidden');
+    }
+
+    function hideConnectionDetailsModal() {
+      const modal = document.getElementById('connectionDetailsModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    async function copyConnectionDetailsToClipboard() {
+      const text = buildConnectionDiagnosticsText();
+      const err = document.getElementById('connectionDetailsError');
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('Copied connection details', 'success');
+      } catch (e) {
+        // Fallback for older browsers / permissions
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+          showToast('Copied connection details', 'success');
+        } catch (e2) {
+          if (err) {
+            err.textContent = 'Clipboard copy failed. You can manually select the text and copy.';
+            err.style.display = 'block';
+          }
+        }
+      }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // LOGIN
     // ═══════════════════════════════════════════════════════════════
@@ -4095,7 +4192,6 @@ Response format:
       } finally {
         if (state.currentView === 'agents') {
           renderAgentsPage();
-          renderDetailPanel();
         }
       }
     }
@@ -4115,7 +4211,6 @@ Response format:
         state.agentSummaryLoading[id] = false;
         if (state.currentView === 'agents') {
           renderAgentsPage();
-          renderDetailPanel();
         }
       }
     }
@@ -4156,6 +4251,11 @@ Response format:
     }
 
     function renderAgentsPage() {
+      // Ensure agent data caches exist (detail panel used to initialize these)
+      if (!state.agentSummaries) state.agentSummaries = {};
+      if (!state.agentSummaryLoading) state.agentSummaryLoading = {};
+      if (!state.resolvedSkillsByAgent) state.resolvedSkillsByAgent = {};
+
       const list = document.getElementById('agentsListColumn');
       const body = document.getElementById('agentsMainBody');
       if (!list || !body) return;

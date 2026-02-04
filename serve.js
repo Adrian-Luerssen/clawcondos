@@ -111,7 +111,11 @@ function serveFile(res, filePath) {
   const mime = MIME_TYPES[ext] || 'application/octet-stream';
   const content = readFileSync(filePath);
 
-  res.writeHead(200, { 'Content-Type': mime });
+  // Avoid stale UI assets
+  res.writeHead(200, {
+    'Content-Type': mime,
+    'Cache-Control': 'no-store, max-age=0'
+  });
   res.end(content);
 }
 
@@ -132,19 +136,48 @@ function safeReadFile(path, maxBytes = 200_000) {
 
 function resolveAgentWorkspace(agentId) {
   const id = String(agentId || '').trim();
-  // MVP: main agent points at the global workspace.
-  if (id === 'main') return resolvePath('/home/albert/clawd');
+  if (!id) return null;
+
+  // Known local agent workspaces (cheap + reliable; can be generalized later)
+  if (id === 'main' || id === 'app-assistant') return resolvePath('/home/albert/clawd');
+  if (id === 'caffeine') return resolvePath('/home/albert/clawd-caffeine');
+  if (id === 'codex') return resolvePath('/home/albert/clawd');
+
   return null;
+}
+
+function parseMissionFromIdentity(md) {
+  const m = String(md || '').match(/^\s*Mission:\s*(.+)$/im);
+  if (m) return m[1].trim();
+  const lines = String(md || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  return lines[0]?.replace(/^#\s+/, '') || '';
+}
+
+function parseHeadings(md) {
+  const out = [];
+  for (const line of String(md || '').split(/\r?\n/)) {
+    const m = line.match(/^(#{1,6})\s+(.+)$/);
+    if (m) out.push({ level: m[1].length, text: m[2].trim() });
+  }
+  return out;
 }
 
 function buildAgentSummary(agentId) {
   const workspace = resolveAgentWorkspace(agentId);
   if (!workspace) return { ok: false, error: 'Unknown agent/workspace', agentId };
+
+  const identityMd = safeReadFile(join(workspace, 'IDENTITY.md'), 120_000) || '';
+  const heartbeatMd = safeReadFile(join(workspace, 'HEARTBEAT.md'), 120_000) || '';
+
   return {
     ok: true,
     agentId,
     workspace,
-    note: 'MVP agent summary (expand later)'
+    mission: parseMissionFromIdentity(identityMd) || '(no mission found)',
+    headings: {
+      heartbeat: heartbeatMd ? parseHeadings(heartbeatMd).slice(0, 120) : []
+    },
+    audit: { summary: { warn: 0, info: 0 } }
   };
 }
 

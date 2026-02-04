@@ -36,9 +36,10 @@ const VoiceRecorder = (() => {
     return document.getElementById(id);
   }
 
-  // Support multiple composers via mount({btnId, timerId, hintId?, meterId?}).
-  // If you don't mount, it defaults to the original chatView ids.
-  let mounted = null; // { btnId, timerId, hintId, meterId, meterLevelId }
+  // Support multiple composers via mount({ btnId, timerId, hintId?, meterId? }).
+  // Only one recording can run at a time, so we track the *active* mount per recording.
+  const mounts = new Map(); // btnId -> mount config
+  let activeMount = null; // { btnId, timerId, hintId, meterId, meterLevelId }
 
   function pickMimeType() {
     if (!window.MediaRecorder) return null;
@@ -58,7 +59,7 @@ const VoiceRecorder = (() => {
   }
 
   function el(id) {
-    return mounted?.[id] ? $(mounted[id]) : $(id);
+    return activeMount?.[id] ? $(activeMount[id]) : $(id);
   }
 
   function setUIRecording(isRecording) {
@@ -142,7 +143,7 @@ const VoiceRecorder = (() => {
         const rms = Math.sqrt(sum / data.length);
         const level = Math.min(1, rms * 2.2);
 
-        const meter = (mounted?.meterLevelId ? $(mounted.meterLevelId) : $('voiceMeterLevel'));
+        const meter = (activeMount?.meterLevelId ? $(activeMount.meterLevelId) : $('voiceMeterLevel'));
         if (meter) meter.style.width = `${Math.round(level * 100)}%`;
 
         meterRaf = requestAnimationFrame(tick);
@@ -156,6 +157,11 @@ const VoiceRecorder = (() => {
 
   async function start() {
     if (mediaRecorder?.state === 'recording') return;
+    if (!activeMount) {
+      // Fallback: if start() was called programmatically without a mount click,
+      // default UI bindings to the primary composer.
+      activeMount = { btnId: 'voiceRecordBtn', timerId: 'voiceTimer', hintId: 'voiceHint', meterId: 'voiceMeter', meterLevelId: 'voiceMeterLevel' };
+    }
 
     const stream = await ensureStream();
     const mimeType = pickMimeType();
@@ -219,7 +225,7 @@ const VoiceRecorder = (() => {
       analyser = null;
     }
 
-    const meter = (mounted?.meterLevelId ? $(mounted.meterLevelId) : $('voiceMeterLevel'));
+    const meter = (activeMount?.meterLevelId ? $(activeMount.meterLevelId) : $('voiceMeterLevel'));
     if (meter) meter.style.width = '0%';
 
     // Convert chunks to file and add to MediaUpload
@@ -241,6 +247,9 @@ const VoiceRecorder = (() => {
     }
 
     chunks = [];
+
+    // Reset active mount after each recording so the next click sets it explicitly.
+    activeMount = null;
   }
 
   function stop() {
@@ -278,7 +287,7 @@ const VoiceRecorder = (() => {
   }
 
   function mount(opts = {}) {
-    mounted = {
+    const cfg = {
       btnId: opts.btnId || 'voiceRecordBtn',
       timerId: opts.timerId || 'voiceTimer',
       hintId: opts.hintId || 'voiceHint',
@@ -286,19 +295,26 @@ const VoiceRecorder = (() => {
       meterLevelId: opts.meterLevelId || 'voiceMeterLevel',
     };
 
-    const btn = $(mounted.btnId);
+    const btn = $(cfg.btnId);
     if (!btn) return;
 
     // avoid double-binding
-    if (btn.dataset.voiceBound) return;
+    if (btn.dataset.voiceBound) {
+      mounts.set(cfg.btnId, cfg);
+      return;
+    }
     btn.dataset.voiceBound = '1';
+
+    mounts.set(cfg.btnId, cfg);
 
     btn.addEventListener('click', (e) => {
       e.preventDefault();
+      // Make this composer the active UI target for the duration of this recording.
+      activeMount = cfg;
       toggle();
     });
 
-    console.log('[VoiceRecorder] Mounted', mounted);
+    console.log('[VoiceRecorder] Mounted', cfg);
   }
 
   function init() {
