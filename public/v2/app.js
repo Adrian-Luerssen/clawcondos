@@ -1375,26 +1375,25 @@ function initAutoArchiveUI() {
       // Server sends: 'delta' (streaming), 'final' (done), 'error'
       // Track active runs and update agent status (with persistence)
       if (runState === 'delta') {
-        // Streaming chunk - agent is thinking/responding
         trackActiveRun(sessionKey, runId);
         state.sessionInputReady.set(sessionKey, false);
         if (state.sessionAgentStatus[sessionKey] !== 'thinking') {
           setSessionStatus(sessionKey, 'thinking');
         }
-        
-        // Show streaming content in current session
-        if (state.currentSession?.key === sessionKey && message?.content) {
-          const text = extractText(message.content);
-          if (text) {
-            updateStreamingMessage(runId, text, '');
-          }
+
+        // If we haven't received content yet, show typing indicator.
+        // (Some providers stream slowly; this keeps UI responsive.)
+        if (!message?.content) {
+          if (state.currentSession?.key === sessionKey) showTypingIndicator(runId, '');
+          if (state.currentView === 'goal' && state.goalChatSessionKey === sessionKey) showTypingIndicator(runId, 'goal');
         }
 
-        // Also stream into goal view if it's showing the same session
-        if (state.currentView === 'goal' && state.goalChatSessionKey === sessionKey && message?.content) {
+        // Stream content
+        if (message?.content) {
           const text = extractText(message.content);
           if (text) {
-            updateStreamingMessage(runId, text, 'goal');
+            if (state.currentSession?.key === sessionKey) updateStreamingMessage(runId, text, '');
+            if (state.currentView === 'goal' && state.goalChatSessionKey === sessionKey) updateStreamingMessage(runId, text, 'goal');
           }
         }
       } else if (runState === 'final') {
@@ -5812,14 +5811,22 @@ Response format:
       // Primary chat composer
       const sendBtn = document.getElementById('sendBtn');
       if (sendBtn) sendBtn.disabled = state.isThinking;
+
       const stopBtn = document.getElementById('stopBtn');
-      if (stopBtn) stopBtn.disabled = !state.isThinking;
+      if (stopBtn) {
+        const canStop = state.isThinking && !!(state.currentSession?.key);
+        stopBtn.disabled = !canStop;
+      }
 
       // Goal composer uses separate ids
       const sendGoal = document.getElementById('goal_sendBtn');
       if (sendGoal) sendGoal.disabled = state.isThinking;
+
       const stopGoal = document.getElementById('goal_stopBtn');
-      if (stopGoal) stopGoal.disabled = !state.isThinking;
+      if (stopGoal) {
+        const canStopGoal = state.isThinking && !!(state.goalChatSessionKey);
+        stopGoal.disabled = !canStopGoal;
+      }
     }
 
     function composerTemplate(prefix) {
