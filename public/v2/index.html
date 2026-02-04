@@ -386,13 +386,18 @@
                     <div class="goal-chat-meta" id="goalChatMeta" style="min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">—</div>
                   </div>
                   <div style="display:flex; gap:8px; align-items:center;">
-                    <button class="ghost-btn" onclick="openNewSession(state.currentCondoId, state.currentGoalOpenId)">＋ New</button>
-                    <button class="ghost-btn" onclick="showAttachSessionModal(null)">⛓</button>
-                    <button class="ghost-btn" onclick="openGoalChatInFull()">Open →</button>
+                    <button class="ghost-btn" id="goalNewSessionBtn" onclick="openNewSession(state.currentCondoId, state.currentGoalOpenId)">＋ New</button>
+                    <button class="ghost-btn" id="goalAttachBtn" onclick="showAttachSessionModal(null)">⛓</button>
+                    <button class="ghost-btn" id="goalOpenBtn" onclick="openGoalChatInFull()">Open →</button>
                   </div>
                 </div>
 
                 <div class="goal-chat-body" style="padding:0; display:flex; flex-direction:column; min-height:0;">
+                  <div id="goalKickoffOverlay" style="display:none; padding:18px 14px; border-bottom:1px solid rgba(255,255,255,0.06);">
+                    <div style="font-weight:600; margin-bottom:6px;">This goal hasn’t started yet</div>
+                    <div style="color: var(--text-dim); font-size:0.9rem; margin-bottom:12px;">Kick off to create the first session, send the goal context, and begin execution.</div>
+                    <button class="ghost-btn" style="border-color: rgba(96,165,250,.55);" onclick="kickOffGoal()">Kick Off Goal</button>
+                  </div>
                   <div class="chat-messages" id="goal_chatMessages"></div>
                   <button class="jump-to-latest" id="goal_jumpToLatest" title="Jump to latest" style="right: 14px; bottom: 92px;">
                     <span class="jump-to-latest-label">Jump to latest</span>

@@ -2302,6 +2302,124 @@ function initAutoArchiveUI() {
       closeSidebar();
     }
 
+    function setGoalChatLocked(locked) {
+      const overlay = document.getElementById('goalKickoffOverlay');
+      const composer = document.getElementById('composerMountGoal');
+      if (overlay) overlay.style.display = locked ? 'block' : 'none';
+      if (composer) composer.style.display = locked ? 'none' : 'block';
+
+      const btns = [
+        document.getElementById('goalNewSessionBtn'),
+        document.getElementById('goalAttachBtn'),
+        document.getElementById('goalOpenBtn'),
+      ].filter(Boolean);
+
+      for (const b of btns) {
+        b.disabled = !!locked;
+        b.style.opacity = locked ? '0.45' : '1';
+        b.style.pointerEvents = locked ? 'none' : 'auto';
+      }
+    }
+
+    async function kickOffGoal() {
+      const goalId = state.currentGoalOpenId;
+      const goal = state.goals.find(g => g.id === goalId);
+      if (!goalId || !goal) {
+        showToast('Goal not ready', 'warning', 3000);
+        return;
+      }
+
+      if (state.goalChatSessionKey) {
+        // Already kicked off
+        setGoalChatLocked(false);
+        return;
+      }
+
+      setGoalChatLocked(true);
+
+      const agentId = 'main';
+      const timestamp = Date.now();
+      const sessionKey = `agent:${agentId}:webchat:${timestamp}`;
+
+      // Build kickoff payload (single message, includes current goal state).
+      const tasks = Array.isArray(goal.tasks) ? goal.tasks : [];
+      const tasksText = tasks.length
+        ? tasks.map((t, i) => `${i + 1}. [${t.done ? 'x' : ' '}] ${t.text || ''}`.trim()).join('\n')
+        : '(no tasks yet)';
+      const def = (goal.notes || goal.description || '').trim() || '(no definition yet)';
+
+      const kickoff = [
+        `You are working on this goal in ClawCondos.`,
+        ``,
+        `GOAL: ${goal.title || goalId}`,
+        `STATUS: ${goal.status || 'active'}${goal.priority ? ` · PRIORITY: ${goal.priority}` : ''}`,
+        ``,
+        `DEFINITION:`,
+        def,
+        ``,
+        `TASKS:`,
+        tasksText,
+        ``,
+        `INSTRUCTIONS:`,
+        `1) Pick the best first task to start now (you choose).`,
+        `2) Start executing immediately.`,
+        `3) As you work, keep the goal state updated by emitting a compact JSON patch for tasks/status/nextTask (auto-applied by the UI).`,
+      ].join('\n');
+
+      try {
+        // Attach session to goal first so it shows up immediately.
+        await fetch(`/api/goals/${encodeURIComponent(goalId)}/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionKey }),
+        });
+
+        state.goalChatSessionKey = sessionKey;
+
+        // Update meta now
+        const chatMetaEl = document.getElementById('goalChatMeta');
+        if (chatMetaEl) chatMetaEl.textContent = `${sessionKey} · starting…`;
+
+        // Send kickoff with reliability check.
+        await rpcCall('chat.send', {
+          sessionKey,
+          message: kickoff,
+          idempotencyKey: `kickoff-${goalId}-${timestamp}`,
+        }, 130000);
+
+        // Verify delivery
+        const deadline = Date.now() + 12000;
+        let ok = false;
+        while (Date.now() < deadline) {
+          try {
+            const h = await rpcCall('chat.history', { sessionKey, limit: 20 }, 20000);
+            const msgs = h?.messages || [];
+            ok = msgs.some(m => m.role === 'user' && extractText(m.content).includes(`GOAL: ${goal.title || goalId}`));
+          } catch {}
+          if (ok) break;
+          await new Promise(r => setTimeout(r, 400));
+        }
+        if (!ok) {
+          showToast('Kickoff may not have been delivered. Please retry.', 'warning', 6000);
+        }
+
+        await loadSessions();
+        await loadGoals();
+
+        setGoalChatLocked(false);
+        await renderGoalChat();
+
+        // Focus input
+        const input = document.getElementById('goal_chatInput');
+        if (input) input.focus();
+      } catch (err) {
+        console.error('Kickoff failed', err);
+        showToast(err.message || 'Kickoff failed', 'error', 7000);
+        state.goalChatSessionKey = null;
+        setGoalChatLocked(true);
+      }
+    }
+
     function renderGoalView() {
       const goal = state.goals.find(g => g.id === state.currentGoalOpenId);
       if (!goal) return;
@@ -2344,6 +2462,7 @@ function initAutoArchiveUI() {
       const sess = Array.isArray(goal.sessions) ? goal.sessions : [];
       const latestKey = getLatestGoalSessionKey(goal);
       state.goalChatSessionKey = latestKey;
+      setGoalChatLocked(!latestKey);
 
       const chatMetaEl = document.getElementById('goalChatMeta');
       if (chatMetaEl) {
@@ -2381,7 +2500,7 @@ function initAutoArchiveUI() {
 
       const key = state.goalChatSessionKey;
       if (!key) {
-        box.innerHTML = `<div class="message system">No sessions for this goal yet. Start a new one with “＋ New”.</div>`;
+        box.innerHTML = `<div class="message system">Not started yet. Click “Kick Off Goal” to create the first session and begin.</div>`;
         return;
       }
 
@@ -2467,29 +2586,11 @@ function initAutoArchiveUI() {
         return;
       }
 
-      // If this goal has no session yet, the first message should automatically create
-      // the first session for that goal and send the message into it.
-      let key = state.goalChatSessionKey;
-      let createdNewSession = false;
+      // Goal chat requires explicit kickoff.
+      const key = state.goalChatSessionKey;
       if (!key) {
-        const goalId = state.currentGoalOpenId;
-        const goal = state.goals.find(g => g.id === goalId);
-        if (!goalId || !goal) {
-          showToast('Goal not ready', 'warning', 3000);
-          return;
-        }
-
-        const agentId = state.newSessionAgentId || 'main';
-        const timestamp = Date.now();
-        key = `agent:${agentId}:webchat:${timestamp}`;
-        state.goalChatSessionKey = key;
-        createdNewSession = true;
-
-        // Make the UI reflect that the goal now has an active session.
-        try {
-          const chatMetaEl = document.getElementById('goalChatMeta');
-          if (chatMetaEl) chatMetaEl.textContent = 'Starting session…';
-        } catch {}
+        showToast('Kick off this goal before chatting', 'warning', 3500);
+        return;
       }
 
       // If agent is busy, queue goal messages (including attachments).
@@ -2553,44 +2654,26 @@ function initAutoArchiveUI() {
           idempotencyKey: `goalmsg-${key}-${Date.now()}`,
         }, 130000);
 
-        // If this was the first message for the goal, attach the new session to the goal.
-        if (createdNewSession) {
-          const goalId = state.currentGoalOpenId;
-          try {
-            await fetch(`/api/goals/${encodeURIComponent(goalId)}/sessions`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sessionKey: key }),
-            });
-          } catch (err) {
-            addChatMessageTo('goal', 'system', `Warning: failed to attach session to goal: ${err.message}`);
+        // Reliability: verify delivery (avoid "phantom" optimistic messages).
+        try {
+          const sentText = (finalMessage || '').trim();
+          if (sentText) {
+            const deadline = Date.now() + 8000;
+            let ok = false;
+            while (Date.now() < deadline) {
+              try {
+                const h = await rpcCall('chat.history', { sessionKey: key, limit: 20 }, 20000);
+                const msgs = h?.messages || [];
+                ok = msgs.some(m => m.role === 'user' && extractText(m.content).trim() === sentText);
+              } catch {}
+              if (ok) break;
+              await new Promise(r => setTimeout(r, 350));
+            }
+            if (!ok) {
+              addChatMessageTo('goal', 'system', '⚠️ Message may not have been delivered (not found in history). Please retry.');
+            }
           }
-
-          // Refresh local caches so the UI shows the session under the goal.
-          // IMPORTANT: do NOT call renderGoalView() here — it reloads history and can
-          // wipe the optimistic first message until a manual refresh.
-          try {
-            await loadSessions();
-            await loadGoals();
-
-            // Ensure in-memory goal includes this new session (even if loadGoals is slow).
-            const goal = state.goals.find(g => g.id === goalId);
-            if (goal) {
-              if (!Array.isArray(goal.sessions)) goal.sessions = [];
-              if (!goal.sessions.includes(key)) goal.sessions.push(key);
-            }
-
-            // Update sidebar/detail without nuking chat contents.
-            try { renderSidebar(); } catch {}
-            try { renderDetailPanel(); } catch {}
-
-            const chatMetaEl = document.getElementById('goalChatMeta');
-            if (chatMetaEl) {
-              const s = (state.sessions || []).find(x => x.key === key);
-              chatMetaEl.textContent = s ? `${getSessionName(s)} · ${getSessionMeta(s)}` : key;
-            }
-          } catch {}
-        }
+        } catch {}
 
         // Don't re-fetch history immediately; the WS event will append the response.
         // (Immediate reload causes "message appears then disappears".)
@@ -3871,6 +3954,38 @@ Response format:
       }
     }
     
+    async function loadCronJobs() {
+      if (state.cronJobsLoaded) return;
+      try {
+        const res = await rpcCall('cron.list', { includeDisabled: true });
+        const jobs = res?.jobs || res?.items || (Array.isArray(res) ? res : []);
+        if (Array.isArray(jobs)) {
+          state.cronJobs = jobs;
+          state.cronJobsLoaded = true;
+        }
+      } catch (e) {
+        console.warn('cron.list failed:', e?.message || e);
+      }
+    }
+
+    async function loadSkillDetailsForAgent(agentId, skillIds) {
+      try {
+        const ids = (skillIds || []).map(String).filter(Boolean);
+        if (!ids.length) return;
+        const res = await fetch(`/api/skills/resolve?ids=${encodeURIComponent(ids.join(','))}`);
+        const data = await res.json();
+        if (data?.ok && Array.isArray(data.skills)) {
+          state.resolvedSkillsByAgent[agentId] = data.skills;
+        } else {
+          state.resolvedSkillsByAgent[agentId] = ids.map(id => ({ id, name: id, description: '' }));
+        }
+      } catch {
+        state.resolvedSkillsByAgent[agentId] = (skillIds || []).map(id => ({ id, name: id, description: '' }));
+      } finally {
+        if (state.currentView === 'agents') renderDetailPanel();
+      }
+    }
+
     async function loadApps() {
       try {
         const res = await fetch('/api/apps');
@@ -4892,6 +5007,79 @@ Response format:
     function renderDetailPanel() {
       const panel = document.getElementById('detailPanelContent');
       if (!panel) return;
+
+      if (state.currentView === 'agents') {
+        const agent = state.agents?.find(a => a.id === state.selectedAgentId) || state.agents?.[0];
+        if (!agent) {
+          panel.innerHTML = '<div class="detail-section"><div class="detail-label">Agents</div><div class="detail-value">No agents configured</div></div>';
+          return;
+        }
+
+        const emoji = agent.identity?.emoji || '🤖';
+        const name = agent.identity?.name || agent.name || agent.id;
+        const skillIds = Array.isArray(agent.skills) ? agent.skills : (Array.isArray(agent.skillIds) ? agent.skillIds : []);
+
+        const summary = state.agentSummaries?.[agent.id];
+        const resolvedSkills = (state.resolvedSkillsByAgent?.[agent.id] || []).filter(Boolean);
+
+        const jobs = state.cronJobs || [];
+        const attachedJobs = jobs.filter(j => {
+          if (j.agentId && String(j.agentId) === String(agent.id)) return true;
+          const n = String(j.name || '').toLowerCase();
+          return n.includes(String(agent.id).toLowerCase());
+        });
+
+        panel.innerHTML = `
+          <div class="detail-section">
+            <div class="detail-label">Agent</div>
+            <div class="detail-value">${emoji} ${escapeHtml(name)}</div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-label">High-level</div>
+            <div class="detail-value" style="white-space: pre-wrap; color: var(--text-dim);">${summary?.mission ? escapeHtml(summary.mission) : 'Loading summary…'}</div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-label">Skills</div>
+            <div class="detail-value" style="color: var(--text-dim);">
+              ${resolvedSkills.length ? resolvedSkills.map(s => `
+                <div style="margin:6px 0;">
+                  <div style="font-weight:600; color: var(--text);">${escapeHtml(s.name || s.id)}</div>
+                  <div>${escapeHtml(s.description || '')}</div>
+                </div>
+              `).join('') : (skillIds.length ? escapeHtml(skillIds.join(', ')) : '(none)')}
+            </div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-label">Heartbeat (outline)</div>
+            <div class="detail-value" style="white-space: pre-wrap; color: var(--text-dim);">${summary?.headings?.heartbeat?.length ? escapeHtml(summary.headings.heartbeat.map(h => `${'#'.repeat(h.level)} ${h.text}`).slice(0, 12).join('\n')) : (summary ? '(no HEARTBEAT.md found)' : 'Loading…')}</div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-label">Security audit</div>
+            <div class="detail-value" style="color: var(--text-dim);">${summary?.audit?.summary ? `warn: <b>${escapeHtml(String(summary.audit.summary.warn))}</b> · info: ${escapeHtml(String(summary.audit.summary.info))}` : 'Loading…'}</div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-label">Cron jobs</div>
+            <div class="detail-value" style="color: var(--text-dim);">
+              ${attachedJobs.length ? attachedJobs.slice(0, 10).map(j => {
+                const sch = j.schedule?.kind === 'cron' ? j.schedule.expr : (j.schedule?.kind || '');
+                return `<div style="margin-top:6px;"><b>${escapeHtml(j.name || j.id)}</b><div style="color: var(--text-dim); font-size: 0.8rem;">${escapeHtml(sch)}${j.enabled === false ? ' · disabled' : ''}</div></div>`;
+              }).join('') : 'None detected'}
+            </div>
+          </div>
+        `;
+
+        // kick off async loads
+        if (!state.agentSummaries) state.agentSummaries = {};
+        if (!state.agentSummaryLoading) state.agentSummaryLoading = {};
+        if (!state.agentSummaries[agent.id] && !state.agentSummaryLoading[agent.id]) loadAgentSummary(agent.id);
+
+        if (!state.resolvedSkillsByAgent) state.resolvedSkillsByAgent = {};
+        if (skillIds.length && !state.resolvedSkillsByAgent[agent.id]) loadSkillDetailsForAgent(agent.id, skillIds);
+
+        if (!state.cronJobsLoaded) loadCronJobs();
+
+        return;
+      }
 
       if (state.currentView === 'apps') {
         const app = state.apps.find(a => a.id === state.selectedAppId) || state.apps[0];
