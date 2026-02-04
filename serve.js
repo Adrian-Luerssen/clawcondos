@@ -7,8 +7,8 @@
  */
 
 import { createServer, request as httpRequest } from 'http';
-import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from 'fs';
-import { join, extname } from 'path';
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, readdirSync } from 'fs';
+import { join, extname, resolve as resolvePath } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -106,13 +106,72 @@ function serveFile(res, filePath) {
     res.end('Not Found');
     return;
   }
-  
+
   const ext = extname(filePath);
   const mime = MIME_TYPES[ext] || 'application/octet-stream';
   const content = readFileSync(filePath);
-  
+
   res.writeHead(200, { 'Content-Type': mime });
   res.end(content);
+}
+
+function safeReadFile(path, maxBytes = 200_000) {
+  try {
+    if (!existsSync(path)) return null;
+    const st = statSync(path);
+    if (!st.isFile()) return null;
+    if (st.size > maxBytes) {
+      const raw = readFileSync(path, 'utf-8');
+      return raw.slice(0, maxBytes) + `\n\n[truncated: ${st.size} bytes]`;
+    }
+    return readFileSync(path, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+function resolveAgentWorkspace(agentId) {
+  const id = String(agentId || '').trim();
+  // MVP: main agent points at the global workspace.
+  if (id === 'main') return resolvePath('/home/albert/clawd');
+  return null;
+}
+
+function buildAgentSummary(agentId) {
+  const workspace = resolveAgentWorkspace(agentId);
+  if (!workspace) return { ok: false, error: 'Unknown agent/workspace', agentId };
+  return {
+    ok: true,
+    agentId,
+    workspace,
+    note: 'MVP agent summary (expand later)'
+  };
+}
+
+function resolveSkills(ids) {
+  const out = [];
+  const bases = [
+    resolvePath('/home/albert/.npm-global/lib/node_modules/openclaw/skills'),
+    resolvePath('/home/albert/clawd/skills'),
+  ];
+
+  for (const id of ids) {
+    let found = null;
+    for (const base of bases) {
+      const p = join(base, id, 'SKILL.md');
+      const content = safeReadFile(p, 60_000);
+      if (content != null) {
+        // naive description: first non-empty line after first heading
+        const lines = content.split(/\r?\n/);
+        const firstPara = lines.filter(l => l.trim()).slice(0, 12).join(' ');
+        found = { id, name: id, description: firstPara.slice(0, 280) };
+        break;
+      }
+    }
+    out.push(found || { id, name: id, description: '' });
+  }
+
+  return out;
 }
 
 // Proxy request to app
@@ -197,7 +256,93 @@ const server = createServer(async (req, res) => {
   }
   
   const apps = loadApps();
-  
+
+  // API: Agent summaries (ClawCondos)
+  // GET /api/agents/summary?agentId=<id>&refresh=1
+  if (pathname === '/api/agents/summary' && req.method === 'GET') {
+    const agentId = url.searchParams.get('agentId') || '';
+    const forceRefresh = url.searchParams.get('refresh') === '1';
+    const summary = buildAgentSummary(agentId, { forceRefresh });
+    json(res, summary.ok ? 200 : 404, summary);
+    return;
+  }
+
+  // API: Skills index/resolve (ClawCondos)
+  // GET /api/skills/resolve?ids=a,b,c
+  if (pathname === '/api/skills/resolve' && req.method === 'GET') {
+    const idsRaw = url.searchParams.get('ids') || '';
+    const ids = idsRaw.split(',').map(s => s.trim()).filter(Boolean).slice(0, 80);
+    const resolved = resolveSkills(ids);
+    json(res, 200, { ok: true, skills: resolved });
+    return;
+  }
+
+  // API: Agent file browser (ClawCondos)
+  // GET /api/agents/files?agentId=<id>
+  if (pathname === '/api/agents/files' && req.method === 'GET') {
+    const agentId = url.searchParams.get('agentId') || '';
+    const workspace = resolveAgentWorkspace(agentId);
+    if (!workspace) {
+      json(res, 404, { ok: false, error: 'Workspace not found' });
+      return;
+    }
+
+    const allowedExt = new Set(['.md', '.json', '.txt', '.log', '.sh', '.mjs', '.js', '.py']);
+    const entries = [];
+
+    function walk(dir, relBase = '') {
+      let kids = [];
+      try { kids = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const d of kids) {
+        const rel = relBase ? `${relBase}/${d.name}` : d.name;
+        if (rel.startsWith('.git') || rel.includes('/.git')) continue;
+        if (d.isDirectory()) {
+          if (d.name === 'node_modules' || d.name === '.venv' || d.name === 'dist' || d.name === 'build' || d.name === 'tmp') continue;
+          entries.push({ path: rel, type: 'dir' });
+          if ((rel.match(/\//g) || []).length < 4) walk(join(dir, d.name), rel);
+        } else if (d.isFile()) {
+          const ext = extname(d.name);
+          if (!allowedExt.has(ext)) continue;
+          let st;
+          try { st = statSync(join(dir, d.name)); } catch { continue; }
+          entries.push({ path: rel, type: 'file', size: st.size, mtimeMs: st.mtimeMs });
+        }
+      }
+    }
+
+    walk(workspace, '');
+    entries.sort((a, b) => a.path.localeCompare(b.path));
+    json(res, 200, { ok: true, agentId, workspace, entries });
+    return;
+  }
+
+  // GET /api/agents/file?agentId=<id>&path=<rel>
+  if (pathname === '/api/agents/file' && req.method === 'GET') {
+    const agentId = url.searchParams.get('agentId') || '';
+    const rel = url.searchParams.get('path') || '';
+    const workspace = resolveAgentWorkspace(agentId);
+    if (!workspace) {
+      json(res, 404, { ok: false, error: 'Workspace not found' });
+      return;
+    }
+    if (!rel || rel.includes('..') || rel.startsWith('/')) {
+      json(res, 400, { ok: false, error: 'Bad path' });
+      return;
+    }
+    const full = join(workspace, rel);
+    if (!full.startsWith(workspace)) {
+      json(res, 400, { ok: false, error: 'Bad path' });
+      return;
+    }
+    const content = safeReadFile(full, 180_000);
+    if (content == null) {
+      json(res, 404, { ok: false, error: 'File not found' });
+      return;
+    }
+    json(res, 200, { ok: true, agentId, path: rel, content });
+    return;
+  }
+
   // API: Goals (ClawCondos)
   // GET  /api/goals
   // POST /api/goals { title, condoId?, description?, completed?, status?, priority?, deadline?, notes?, tasks? }

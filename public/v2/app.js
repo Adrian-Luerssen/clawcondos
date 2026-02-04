@@ -4093,8 +4093,144 @@ Response format:
       } catch {
         state.resolvedSkillsByAgent[agentId] = (skillIds || []).map(id => ({ id, name: id, description: '' }));
       } finally {
+        if (state.currentView === 'agents') {
+          renderAgentsPage();
+          renderDetailPanel();
+        }
+      }
+    }
+
+    async function loadAgentSummary(agentId) {
+      const id = String(agentId || '').trim();
+      if (!id) return;
+      if (state.agentSummaries?.[id] || state.agentSummaryLoading?.[id]) return;
+      state.agentSummaryLoading[id] = true;
+      try {
+        const res = await fetch(`/api/agents/summary?agentId=${encodeURIComponent(id)}`);
+        const data = await res.json();
+        if (data && data.ok) state.agentSummaries[id] = data;
+      } catch (e) {
+        console.warn('agent summary load failed', id, e?.message || e);
+      } finally {
+        state.agentSummaryLoading[id] = false;
+        if (state.currentView === 'agents') {
+          renderAgentsPage();
+          renderDetailPanel();
+        }
+      }
+    }
+
+    async function loadAgentFiles(agentId) {
+      const id = String(agentId || '').trim();
+      if (!id) return;
+      if (state.agentFileLoading) return;
+      state.agentFileLoading = true;
+      try {
+        const res = await fetch(`/api/agents/files?agentId=${encodeURIComponent(id)}`);
+        const data = await res.json();
+        if (data?.ok) {
+          state.agentFileEntries = data.entries || [];
+        }
+      } catch (e) {
+        console.warn('agent files load failed', id, e?.message || e);
+      } finally {
+        state.agentFileLoading = false;
         if (state.currentView === 'agents') renderDetailPanel();
       }
+    }
+
+    async function selectAgentFile(relPath) {
+      const agent = state.agents?.find(a => a.id === state.selectedAgentId) || state.agents?.[0];
+      if (!agent) return;
+      state.selectedAgentFile = relPath;
+      state.agentFileContent = '';
+      try {
+        const res = await fetch(`/api/agents/file?agentId=${encodeURIComponent(agent.id)}&path=${encodeURIComponent(relPath)}`);
+        const data = await res.json();
+        if (data?.ok) state.agentFileContent = data.content || '';
+        else state.agentFileContent = data?.error || 'Failed to load file';
+      } catch (e) {
+        state.agentFileContent = `Failed to load file: ${e?.message || e}`;
+      }
+      renderDetailPanel();
+    }
+
+    function renderAgentsPage() {
+      const list = document.getElementById('agentsListColumn');
+      const body = document.getElementById('agentsMainBody');
+      if (!list || !body) return;
+
+      const agents = (state.agents || []).slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      const sub = document.getElementById('agentsLeftSub');
+      if (sub) sub.textContent = agents.length ? `${agents.length} configured` : '—';
+
+      if (!agents.length) {
+        list.innerHTML = `<div style="padding:12px; color: var(--text-dim);">No agents</div>`;
+        body.innerHTML = '';
+        return;
+      }
+
+      if (!state.selectedAgentId) state.selectedAgentId = agents[0].id;
+
+      list.innerHTML = agents.map(a => {
+        const emoji = a.identity?.emoji || '🤖';
+        const name = a.identity?.name || a.name || a.id;
+        const active = state.selectedAgentId === a.id;
+        const sum = state.agentSummaries?.[a.id];
+        const desc = (sum?.mission || a.description || a.summary || '').replace(/^Mission\s*/i, '').trim();
+        const pills = [a.model ? `<span class="agent-pill">${escapeHtml(String(a.model))}</span>` : ''];
+        if (sum?.audit?.summary?.warn != null) pills.push(`<span class="agent-pill">audit ${escapeHtml(String(sum.audit.summary.warn))}w</span>`);
+
+        return `
+          <div class="agent-card ${active ? 'active' : ''}" onclick="selectAgentForAgentsPage('${escapeHtml(a.id)}')">
+            <div class="agent-card-emoji">${emoji}</div>
+            <div class="agent-card-body">
+              <div class="agent-card-name">${escapeHtml(name)}</div>
+              <div class="agent-card-desc">${escapeHtml(desc)}</div>
+              <div class="agent-card-meta">${pills.filter(Boolean).join('')}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const agent = agents.find(a => a.id === state.selectedAgentId) || agents[0];
+      state.selectedAgentId = agent.id;
+
+      const titleEl = document.getElementById('agentsMainTitle');
+      const metaEl = document.getElementById('agentsMainMeta');
+      if (titleEl) titleEl.textContent = `${agent.identity?.emoji || '🤖'} ${agent.identity?.name || agent.name || agent.id}`;
+      if (metaEl) metaEl.innerHTML = `${agent.model ? `<span class="agent-pill">${escapeHtml(String(agent.model))}</span>` : ''}`;
+
+      const sum = state.agentSummaries?.[agent.id];
+      const skills = (state.resolvedSkillsByAgent?.[agent.id] || []).filter(Boolean);
+
+      body.innerHTML = `
+        <div class="agent-section"><h3>Mission</h3><div class="agent-v">${sum?.mission ? escapeHtml(sum.mission) : '<span class="muted">Loading…</span>'}</div></div>
+        <div class="agent-section"><h3>Cadence</h3><div class="agent-v">${sum?.structured?.cadence?.length ? escapeHtml(sum.structured.cadence.slice(0,10).map(x => `• ${x}`).join('\n')) : '<span class="muted">(not specified)</span>'}</div></div>
+        <div class="agent-section"><h3>Outputs</h3><div class="agent-v">${sum?.structured?.outputs?.length ? escapeHtml(sum.structured.outputs.slice(0,10).map(x => `• ${x}`).join('\n')) : '<span class="muted">(not specified)</span>'}</div></div>
+        <div class="agent-section"><h3>Skills</h3><div class="agent-v">${skills.length ? skills.slice(0,12).map(s => `<div class="agent-kv"><div class="agent-k">${escapeHtml(s.name || s.id)}</div><div class="agent-v">${escapeHtml(s.description || '')}</div></div>`).join('') : '<span class="muted">(none)</span>'}</div></div>
+        <div class="agent-section"><h3>Heartbeat outline</h3><div class="agent-v">${sum?.headings?.heartbeat?.length ? escapeHtml(sum.headings.heartbeat.map(h => `${'#'.repeat(h.level)} ${h.text}`).slice(0, 16).join('\n')) : '<span class="muted">(no HEARTBEAT.md)</span>'}</div></div>
+      `;
+
+      // Kick off async loads
+      if (!sum) loadAgentSummary(agent.id);
+      const skillIds = Array.isArray(agent.skills) ? agent.skills : (Array.isArray(agent.skillIds) ? agent.skillIds : []);
+      if (skillIds.length && !state.resolvedSkillsByAgent?.[agent.id]) loadSkillDetailsForAgent(agent.id, skillIds);
+
+      // Ensure file browser has entries for right panel
+      if (!state.agentFileEntries && !state.agentFileLoading) loadAgentFiles(agent.id);
+
+      if (!state.cronJobsLoaded) loadCronJobs();
+    }
+
+    function selectAgentForAgentsPage(agentId) {
+      state.selectedAgentId = agentId;
+      // reset file viewer for this agent
+      state.agentFileEntries = null;
+      state.selectedAgentFile = null;
+      state.agentFileContent = null;
+      renderAgentsPage();
+      renderDetailPanel();
     }
 
     async function loadApps() {
@@ -4129,9 +4265,14 @@ Response format:
     async function loadAgents() {
       try {
         const result = await rpcCall('agents.list', {});
-        if (result?.agents) {
-          state.agents = result.agents;
+        const agents = result?.agents || result?.items || (Array.isArray(result) ? result : null);
+        if (agents && Array.isArray(agents)) {
+          state.agents = agents;
           renderAgents();
+          if (state.currentView === 'agents') {
+            renderAgentsPage();
+            renderDetailPanel();
+          }
         }
       } catch (err) {
         console.error('Failed to load agents:', err);
@@ -4765,6 +4906,11 @@ Response format:
             showOverview();
           }
           break;
+        case 'agents': {
+          if (payload) state.pendingRouteAgentId = decodeURIComponent(payload);
+          showAgentsView({ fromRouter: true });
+          break;
+        }
         case 'new-session': {
           // /new-session/<condoId>/<goalId?>
           const parts = payload ? payload.split('/').map(decodeURIComponent) : [];
@@ -4875,6 +5021,36 @@ Response format:
         }
       }
       renderRecurringView();
+      renderDetailPanel();
+      updateMobileHeader();
+      closeSidebar();
+    }
+
+    function showAgentsView(opts = {}) {
+      state.currentView = 'agents';
+      setView('agentsView');
+      setActiveNav('agents');
+      setBreadcrumbs([
+        { label: '🏠', onClick: "navigateTo('dashboard')" },
+        { label: 'Agents', current: true }
+      ]);
+      document.getElementById('headerAction').style.display = 'none';
+      document.getElementById('headerStatusIndicator').style.display = 'none';
+
+      // Ensure we have agents loaded
+      if (!state.agents || state.agents.length === 0) {
+        loadAgents();
+      }
+
+      if (state.pendingRouteAgentId) {
+        const pending = state.pendingRouteAgentId;
+        state.pendingRouteAgentId = null;
+        if (state.agents?.find(a => a.id === pending)) state.selectedAgentId = pending;
+      }
+
+      if (!state.selectedAgentId && state.agents?.length) state.selectedAgentId = state.agents[0].id;
+
+      renderAgentsPage();
       renderDetailPanel();
       updateMobileHeader();
       closeSidebar();
