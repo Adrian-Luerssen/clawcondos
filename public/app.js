@@ -143,6 +143,8 @@
       recurringSearch: lsGet('recurring_search', '') || '',
       recurringAgentFilter: lsGet('recurring_agent_filter', 'all') || 'all',
       recurringEnabledOnly: lsGet('recurring_enabled_only', '0') === '1',
+      agentJobsSearchByAgent: JSON.parse(lsGet('agent_jobs_search', '{}') || '{}'),
+      agentJobsEnabledOnlyByAgent: JSON.parse(lsGet('agent_jobs_enabled_only', '{}') || '{}'),
       
       // Auto-title generation tracking
       generatingTitles: new Set(),  // Currently generating
@@ -1421,6 +1423,12 @@ function initAutoArchiveUI() {
           setSessionStatus(sessionKey, 'thinking');
         }
 
+        // Keep Goal session state pill live.
+        if (state.currentView === 'goal' && state.goalChatSessionKey === sessionKey) {
+          const goal = state.goals.find(g => g.id === state.currentGoalOpenId) || getGoalForSession(sessionKey);
+          try { updateGoalSessionStatePill(goal); } catch {}
+        }
+
         // If we haven't received content yet, show typing indicator.
         // (Some providers stream slowly; this keeps UI responsive.)
         if (!message?.content) {
@@ -1441,6 +1449,11 @@ function initAutoArchiveUI() {
         clearActiveRun(sessionKey);
         state.sessionInputReady.set(sessionKey, true);
         setSessionStatus(sessionKey, 'idle');
+
+        if (state.currentView === 'goal' && state.goalChatSessionKey === sessionKey) {
+          const goal = state.goals.find(g => g.id === state.currentGoalOpenId) || getGoalForSession(sessionKey);
+          try { updateGoalSessionStatePill(goal); } catch {}
+        }
         
         // Check if this is a categorization/wizard response (from main session)
         if (sessionKey === 'agent:main:main' && message?.content) {
@@ -1493,6 +1506,11 @@ function initAutoArchiveUI() {
         clearActiveRun(sessionKey);
         state.sessionInputReady.set(sessionKey, true);
         setSessionStatus(sessionKey, runState === 'error' ? 'error' : 'idle');
+
+        if (state.currentView === 'goal' && state.goalChatSessionKey === sessionKey) {
+          const goal = state.goals.find(g => g.id === state.currentGoalOpenId) || getGoalForSession(sessionKey);
+          try { updateGoalSessionStatePill(goal); } catch {}
+        }
         
         if (state.currentSession?.key === sessionKey) {
           state.isThinking = false;
@@ -1580,6 +1598,10 @@ function initAutoArchiveUI() {
     }
     
     function finalizeStreamingMessage(runId, text, prefix = '') {
+      // If provider sends only a final frame (no deltas with content), we may have shown
+      // a typing indicator. Always clear it when final content arrives.
+      hideTypingIndicator(runId, prefix);
+
       const el = document.getElementById(`streaming-${runId}`);
       if (el) {
         el.classList.remove('streaming');
@@ -2370,8 +2392,12 @@ function initAutoArchiveUI() {
         const sessionsForGoal = sessKeys.map(k => state.sessions.find(s => s.key === k)).filter(Boolean);
         sessionsForGoal.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
         const dot = renderGoalDot(goal, sessKeys);
+        const nextTask = (goal.nextTask || '').trim();
+        const nextTaskEl = nextTask
+          ? `<div style="grid-column: 1 / -1; margin: 2px 0 0 22px; font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Next: ${escapeHtml(nextTask)}</div>`
+          : '';
         goalRows.push(`
-          <div class=\"goal-item ${isActive}\" onclick=\"openGoal('${escapeHtml(goal.id)}')\">\n            ${dot}\n            <div class=\"goal-checkbox\"></div>\n            <span class=\"goal-name\">${escapeHtml(goal.title || 'Untitled goal')}</span>\n            <span class=\"goal-count\">${sessionsForGoal.length}</span>\n            <span class=\"goal-add\" title=\"New session for this goal\" onclick=\"event.stopPropagation(); openNewSession('${escapeHtml(condo.id)}','${escapeHtml(goal.id)}')\">+</span>\n          </div>
+          <div class=\"goal-item ${isActive}\" onclick=\"openGoal('${escapeHtml(goal.id)}')\">\n            ${dot}\n            <div class=\"goal-checkbox\"></div>\n            <span class=\"goal-name\" title=\"${escapeHtml(nextTask || '')}\">${escapeHtml(goal.title || 'Untitled goal')}</span>\n            <span class=\"goal-count\">${sessionsForGoal.length}</span>\n            <span class=\"goal-add\" title=\"New session for this goal\" onclick=\"event.stopPropagation(); openNewSession('${escapeHtml(condo.id)}','${escapeHtml(goal.id)}')\">+</span>\n            ${nextTaskEl}\n          </div>
         `);
       }
 
@@ -3188,20 +3214,54 @@ function initAutoArchiveUI() {
       return out;
     }
 
+    function extractFirstJsonObject(s) {
+      const str = String(s || '');
+      const start = str.indexOf('{');
+      if (start === -1) return null;
+
+      let depth = 0;
+      let inString = false;
+      let escape = false;
+      for (let i = start; i < str.length; i++) {
+        const ch = str[i];
+        if (inString) {
+          if (escape) {
+            escape = false;
+          } else if (ch === '\\') {
+            escape = true;
+          } else if (ch === '"') {
+            inString = false;
+          }
+          continue;
+        }
+        if (ch === '"') {
+          inString = true;
+          continue;
+        }
+        if (ch === '{') depth++;
+        else if (ch === '}') depth--;
+        if (depth === 0) {
+          return str.slice(start, i + 1);
+        }
+      }
+      return null;
+    }
+
     function tryParseGoalPatch(text) {
-      // Accept a JSON block like:
-      // ```json
-      // {"goalPatch": { ... }}
-      // ```
-      // or a raw object with {status/tasks/nextTask/...}
+      // Accept either:
+      // - fenced ```json ...``` blocks
+      // - a raw single-line JSON object
+      // - a JSON object embedded inside a longer assistant message
       const blocks = extractJsonBlocks(text);
       const candidates = blocks.length ? blocks : [String(text || '')];
 
       for (const c of candidates) {
         const trimmed = (c || '').trim();
-        if (!trimmed.startsWith('{')) continue;
+        const jsonStr = trimmed.startsWith('{') ? trimmed : extractFirstJsonObject(trimmed);
+        if (!jsonStr || !jsonStr.trim().startsWith('{')) continue;
+
         try {
-          const obj = JSON.parse(trimmed);
+          const obj = JSON.parse(jsonStr);
           const patch = obj?.goalPatch || obj?.clawcondosGoalPatch || obj;
           if (!patch || typeof patch !== 'object') continue;
 
@@ -4583,32 +4643,99 @@ Response format:
 
       const jobsLoaded = state.cronJobsLoaded;
       const allJobs = state.cronJobs || [];
-      const agentJobs = jobsLoaded ? allJobs.filter(j => String(j.agentId || '') === String(agent.id)) : [];
+      const agentKey = String(agent.id);
+      const agentJobs = jobsLoaded ? allJobs.filter(j => String(j.agentId || '') === agentKey) : [];
+      const agentJobSearch = String((state.agentJobsSearchByAgent || {})[agentKey] || '');
+      const agentJobEnabledOnly = !!(state.agentJobsEnabledOnlyByAgent || {})[agentKey];
+
+      let filteredAgentJobs = agentJobs.slice();
+      const agentSearch = agentJobSearch.trim().toLowerCase();
+      if (agentJobEnabledOnly) {
+        filteredAgentJobs = filteredAgentJobs.filter(j => j.enabled !== false);
+      }
+      if (agentSearch) {
+        filteredAgentJobs = filteredAgentJobs.filter(j => {
+          const name = String(j.name || j.id || '');
+          const schedule = formatSchedule(j.schedule);
+          const agentId = String(j.agentId || 'main');
+          const model = String(getJobModel(j.payload));
+          const outcome = summarizeOutcome(j.payload);
+          const status = String(j.state?.lastStatus || '');
+          const haystack = `${name} ${j.id || ''} ${schedule} ${agentId} ${model} ${outcome} ${status}`.toLowerCase();
+          return haystack.includes(agentSearch);
+        });
+      }
 
       const jobsHtml = !jobsLoaded
         ? `<div class="grid-card">Loading recurring tasks…</div>`
-        : (agentJobs.length ? agentJobs.map(j => {
+        : (filteredAgentJobs.length ? filteredAgentJobs.map(j => {
+            const name = j.name || j.id;
             const schedule = formatSchedule(j.schedule);
-            const jobModel = getJobModel(j.payload);
+            const model = getJobModel(j.payload);
             const outcome = summarizeOutcome(j.payload);
-            const stateObj = j.state || {};
-            const lastAt = Number(stateObj.lastRunAtMs || 0);
-            const lastStatus = stateObj.lastStatus || '';
-            const sub = `${schedule}${lastAt ? ` · last ${formatRelativeTime(lastAt)}${lastStatus ? ` (${lastStatus})` : ''}` : ''}`;
+            const last = j.state || {};
+            const lastAt = Number(last.lastRunAtMs || 0);
+            const lastStatus = last.lastStatus || '';
+            const line2 = `${j.agentId || 'main'} · ${model} · ${j.enabled === false ? 'disabled' : 'enabled'}`;
+            const line3 = lastAt ? `last ${formatRelativeTime(lastAt)}${lastStatus ? ` (${lastStatus})` : ''}` : '';
             return `
-              <div class="grid-card" style="margin-bottom:10px;" onclick="openCronJobDetail('${escapeHtml(String(j.id))}')">
-                <div class="grid-card-title">${escapeHtml(String(j.name || j.id))}</div>
-                <div class="grid-card-desc">${escapeHtml(sub)}</div>
+              <div class="grid-card" onclick="openCronJobDetail('${escapeHtml(String(j.id))}')">
+                <div class="grid-card-header">
+                  <div class="grid-card-icon">⏰</div>
+                  <div class="grid-card-actions">
+                    <button class="icon-btn" title="Details" onclick="event.stopPropagation(); openCronJobDetail('${escapeHtml(String(j.id))}')">ℹ️</button>
+                  </div>
+                </div>
+                <div class="grid-card-title">${escapeHtml(String(name))}</div>
+                <div class="grid-card-desc">${escapeHtml(schedule)}</div>
+                <div class="grid-card-desc">${escapeHtml(line2)}</div>
+                ${line3 ? `<div class="grid-card-desc">${escapeHtml(line3)}</div>` : ''}
                 ${outcome ? `<div class="grid-card-desc" style="color: var(--text-dim); margin-top:6px;">${escapeHtml(outcome)}</div>` : ''}
-                <div class="grid-card-meta"><span>${escapeHtml(`${j.enabled === false ? 'disabled' : 'enabled'} · ${j.agentId || 'main'} · ${jobModel}`)}</span></div>
               </div>
             `;
-          }).join('') : `<div class="grid-card">No recurring tasks for this agent</div>`);
+          }).join('') : `<div class="grid-card">${agentJobs.length ? 'No recurring tasks match filters' : 'No recurring tasks for this agent'}</div>`);
 
       body.innerHTML = `
         ${desc ? `<div class="detail-section"><div class="detail-label">Description</div><div class="detail-value" style="white-space: pre-wrap; color: var(--text-dim);">${escapeHtml(desc)}</div></div>` : ''}
-        <div class="detail-section"><div class="detail-label">Recurring Tasks</div><div class="detail-value" style="color: var(--text-dim);">${jobsHtml}</div></div>
+        <div class="detail-section">
+          <div class="detail-label">Recurring Tasks</div>
+          <div class="detail-value">
+            <div class="recurring-filters" style="margin: 6px 0 12px;">
+              <input type="text" id="agentJobsSearch" class="form-input" placeholder="Search jobs…">
+              <label class="recurring-toggle">
+                <input type="checkbox" id="agentJobsEnabledOnly">
+                Enabled only
+              </label>
+            </div>
+            ${jobsHtml}
+          </div>
+        </div>
       `;
+
+      const agentSearchInput = document.getElementById('agentJobsSearch');
+      const agentEnabledToggle = document.getElementById('agentJobsEnabledOnly');
+      if (agentSearchInput) {
+        if (agentSearchInput.value !== agentJobSearch) {
+          agentSearchInput.value = agentJobSearch;
+        }
+        agentSearchInput.oninput = () => {
+          state.agentJobsSearchByAgent = state.agentJobsSearchByAgent || {};
+          state.agentJobsSearchByAgent[agentKey] = agentSearchInput.value || '';
+          lsSet('agent_jobs_search', JSON.stringify(state.agentJobsSearchByAgent));
+          renderAgentsPage();
+        };
+      }
+      if (agentEnabledToggle) {
+        if (agentEnabledToggle.checked !== agentJobEnabledOnly) {
+          agentEnabledToggle.checked = agentJobEnabledOnly;
+        }
+        agentEnabledToggle.onchange = () => {
+          state.agentJobsEnabledOnlyByAgent = state.agentJobsEnabledOnlyByAgent || {};
+          state.agentJobsEnabledOnlyByAgent[agentKey] = agentEnabledToggle.checked;
+          lsSet('agent_jobs_enabled_only', JSON.stringify(state.agentJobsEnabledOnlyByAgent));
+          renderAgentsPage();
+        };
+      }
 
       // Optional async extras (keep, but don't block usefulness)
       const sum = state.agentSummaries?.[agent.id];
