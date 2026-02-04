@@ -2262,13 +2262,7 @@ function initAutoArchiveUI() {
       const btn = document.getElementById('goalMarkDoneBtn');
       if (btn) btn.textContent = completed ? 'Mark active' : 'Mark done';
 
-      // Header meta line: keep it quiet but informative (matches prototype vibe)
-      const meta = [];
-      meta.push(status.toUpperCase());
-      if (pr) meta.push(pr);
-      if (deadline) meta.push(`due ${deadline}`);
-      const chatMeta = document.getElementById('goalChatMeta');
-      if (chatMeta) chatMeta.textContent = meta.join(' · ');
+      // Goal header meta is shown in the right panel; left chat meta is reserved for session identity.
 
       // Definition editor uses goal.notes (closest thing we have today)
       const defDisplay = document.getElementById('goalDefDisplay');
@@ -2277,36 +2271,131 @@ function initAutoArchiveUI() {
         defDisplay.innerHTML = notes ? `${escapeHtml(notes)} <small>(click to edit)</small>` : `Click to add a definition… <small>(click to edit)</small>`;
       }
 
-      // Sessions list (left panel)
+      // Goal chat should load the latest session for this goal
       const sess = Array.isArray(goal.sessions) ? goal.sessions : [];
-      const sessEl = document.getElementById('goalSessions');
-      if (sessEl) {
-        if (!sess.length) {
-          sessEl.innerHTML = `<div class="empty-state">No sessions attached. Attach one to keep work located.</div>`;
-        } else {
-          const byKey = new Map((state.sessions || []).map(s => [s.key, s]));
-          sessEl.innerHTML = sess.map(k => {
-            const s = byKey.get(k);
-            const name = s ? getSessionName(s) : k;
-            const meta = s ? getSessionMeta(s) : 'unknown';
-            return `
-              <div class="goal-session-row" onclick="openSession('${escapeHtml(k)}')">
-                <div class="goal-session-icon">${s ? getSessionIcon(s) : '💬'}</div>
-                <div class="goal-session-main">
-                  <div class="goal-session-name">${escapeHtml(name)}</div>
-                  <div class="goal-session-meta">${escapeHtml(meta)}</div>
-                </div>
-                <button class="goal-session-move" onclick="event.stopPropagation(); showAttachSessionModal('${escapeHtml(k)}')" title="Move">⛓</button>
-              </div>
-            `;
-          }).join('');
+      const latestKey = getLatestGoalSessionKey(goal);
+      state.goalChatSessionKey = latestKey;
+
+      const chatMetaEl = document.getElementById('goalChatMeta');
+      if (chatMetaEl) {
+        if (!latestKey) chatMetaEl.textContent = 'No session yet';
+        else {
+          const s = (state.sessions || []).find(x => x.key === latestKey);
+          chatMetaEl.textContent = s ? `${getSessionName(s)} · ${getSessionMeta(s)}` : latestKey;
         }
       }
+
+      renderGoalChat();
 
       // Tabs + pane
       if (!state.goalTab) state.goalTab = 'tasks';
       setGoalTab(state.goalTab, { skipRender: true });
       renderGoalPane();
+    }
+
+    function getLatestGoalSessionKey(goal) {
+      const keys = Array.isArray(goal?.sessions) ? goal.sessions : [];
+      if (!keys.length) return null;
+      const byKey = new Map((state.sessions || []).map(s => [s.key, s]));
+      const scored = keys.map(k => {
+        const s = byKey.get(k);
+        const t = Number(s?.updatedAt || s?.updatedAtMs || 0);
+        return { k, t };
+      });
+      scored.sort((a, b) => (b.t || 0) - (a.t || 0));
+      return scored[0]?.k || keys[0];
+    }
+
+    async function renderGoalChat() {
+      const box = document.getElementById('goalChatMessages');
+      if (!box) return;
+
+      const key = state.goalChatSessionKey;
+      if (!key) {
+        box.innerHTML = `<div class="empty-state">No sessions for this goal yet. Start a new one with “＋ New”.</div>`;
+        return;
+      }
+
+      box.innerHTML = `<div class="message system">Loading latest session…</div>`;
+      try {
+        const result = await rpcCall('chat.history', { sessionKey: key, limit: 50 });
+        const messages = result?.messages || [];
+        renderChatHistoryInto(box, messages);
+      } catch (err) {
+        box.innerHTML = `<div class="message system">Error loading: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderChatHistoryInto(container, messages) {
+      if (!container) return;
+      if (!messages || messages.length === 0) {
+        container.innerHTML = '<div class="message system">No messages yet</div>';
+        return;
+      }
+
+      container.innerHTML = messages.map((m, idx) => {
+        if (m.role === 'user') {
+          const text = extractText(m.content);
+          if (!text) return '';
+          const timeHtml = m.timestamp ? `<div class="message-time">${formatMessageTime(new Date(m.timestamp))}</div>` : '';
+          return `<div class="message user"><div class="message-content">${formatMessage(text)}</div>${timeHtml}</div>`;
+        } else if (m.role === 'assistant') {
+          const text = extractText(m.content);
+          const spawnCards = extractSpawnCards(m.content, m.timestamp);
+          const timeHtml = m.timestamp ? `<div class="message-time">${formatMessageTime(new Date(m.timestamp))}</div>` : '';
+
+          let html = '';
+          if (spawnCards.length > 0) html += spawnCards.map(card => renderSpawnCard(card, idx)).join('');
+          if (text) html += `<div class="message assistant"><div class="message-content">${formatMessage(text)}</div>${timeHtml}</div>`;
+          return html;
+        }
+        return '';
+      }).filter(Boolean).join('');
+
+      // scroll
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function handleGoalChatKey(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendGoalChatMessage();
+      }
+    }
+
+    function openGoalChatInFull() {
+      const key = state.goalChatSessionKey;
+      if (!key) return;
+      openSession(key, { fromRouter: true });
+    }
+
+    async function sendGoalChatMessage() {
+      const input = document.getElementById('goalChatInput');
+      const box = document.getElementById('goalChatMessages');
+      const key = state.goalChatSessionKey;
+      if (!input || !box || !key) return;
+
+      const text = (input.value || '').trim();
+      if (!text) return;
+
+      input.value = '';
+
+      // optimistic render
+      box.insertAdjacentHTML('beforeend', `<div class="message user"><div class="message-content">${formatMessage(escapeHtml(text))}</div></div>`);
+      box.scrollTop = box.scrollHeight;
+
+      try {
+        await rpcCall('chat.send', {
+          sessionKey: key,
+          message: text,
+          idempotencyKey: `goalmsg-${key}-${Date.now()}`,
+        }, 130000);
+        // refresh view so assistant reply shows
+        renderGoalChat();
+      } catch (err) {
+        box.insertAdjacentHTML('beforeend', `<div class="message system">Error: ${escapeHtml(err.message)}</div>`);
+        box.scrollTop = box.scrollHeight;
+      }
     }
 
     function formatTimestamp(ms) {

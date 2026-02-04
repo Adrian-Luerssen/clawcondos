@@ -361,13 +361,22 @@
             <div class="goal-shell-v2" id="goalShell">
               <section class="goal-chat" id="goalChatPanel">
                 <div class="goal-chat-header">
-                  <div>Sessions</div>
-                  <div class="goal-chat-meta" id="goalChatMeta">—</div>
+                  <div style="display:flex; gap:10px; align-items:baseline; min-width:0;">
+                    <div>Chat</div>
+                    <div class="goal-chat-meta" id="goalChatMeta" style="min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">—</div>
+                  </div>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="ghost-btn" onclick="openNewSession(state.currentCondoId, state.currentGoalOpenId)">＋ New</button>
+                    <button class="ghost-btn" onclick="showAttachSessionModal(null)">⛓</button>
+                    <button class="ghost-btn" onclick="openGoalChatInFull()">Open →</button>
+                  </div>
                 </div>
-                <div class="goal-chat-body" id="goalSessions"></div>
-                <div class="goal-chat-footer">
-                  <button class="ghost-btn" onclick="openNewSession(state.currentCondoId, state.currentGoalOpenId)">＋ New session</button>
-                  <button class="ghost-btn" onclick="showAttachSessionModal(null)">⛓ Attach</button>
+
+                <div class="goal-chat-body" id="goalChatMessages"></div>
+
+                <div class="goal-chat-footer" style="justify-content:stretch;">
+                  <textarea id="goalChatInput" class="form-input" style="flex:1; min-height: 38px; max-height: 120px; resize:none;" placeholder="Message the latest goal session…" onkeydown="handleGoalChatKey(event)"></textarea>
+                  <button class="ghost-btn" onclick="sendGoalChatMessage()">Send</button>
                 </div>
               </section>
 
