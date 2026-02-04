@@ -8012,8 +8012,12 @@ Response format:
           `
           : '';
 
+        // NOTE: condo cards must NOT be <a> tags because they contain goal-row <a> links.
+        // Nested anchors are invalid HTML and can explode the grid layout in some browsers.
         return `
-          <a class="condo-card" href="${escapeHtml(fullHref(`#/condo/${encodeURIComponent(condo.id)}`))}" onclick="return handleCondoLinkClick(event, '${escapeHtml(condo.id)}')">
+          <div class="condo-card" role="link" tabindex="0"
+               onclick="openCondo('${escapeHtml(condo.id)}', { fromRouter: true })"
+               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); openCondo('${escapeHtml(condo.id)}', { fromRouter: true });}">
             <div class="condo-card-header">
               <span style="font-size:18px">🏢</span>
               <span class="condo-card-title">${escapeHtml(condo.name || 'Condo')}</span>
@@ -8022,7 +8026,7 @@ Response format:
             <div class="condo-card-goals">
               ${rows || fallback}
             </div>
-          </a>
+          </div>
         `;
       }).join('');
 
