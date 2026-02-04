@@ -8,16 +8,16 @@
   <meta http-equiv="Expires" content="0">
   <meta name="theme-color" content="#0a0c10">
   <meta name="color-scheme" content="dark">
-  <title>ClawCondos v2</title>
+  <title>ClawCondos</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,520;9..144,720&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="/v2/styles.css?v=13">
+  <link rel="stylesheet" href="/app.css?v=13">
   <link rel="stylesheet" href="/styles/agents.css">
-  <link rel="stylesheet" href="/v2/dashboard-overrides.css">
-  <script>/* cache-bust helper */window.__v2_build = 15;</script>
+  <link rel="stylesheet" href="/dashboard-overrides.css">
+  <script>/* cache-bust helper */window.__v2_build = 16;</script>
   <link rel="stylesheet" href="/styles/media-upload.css">
   <link rel="stylesheet" href="/styles/voice-recorder.css">
 </head>
@@ -206,7 +206,7 @@
   <div class="layout">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header" onclick="navigateTo('dashboard')">
-        <img class="brand-logo" src="/v2/media/clawcondos-logo.png" alt="ClawCondos" />
+        <img class="brand-logo" src="/media/clawcondos-logo.png" alt="ClawCondos" />
         <h1>ClawCondos</h1>
       </div>
 
@@ -260,7 +260,6 @@
         <div class="connection-status" onclick="showConnectionDetailsModal(event)" title="Click for connection details (Shift-click to open login)">
           <span class="connection-dot" id="connectionDot" style="background: var(--yellow);"></span>
           <span id="connectionText">Connecting...</span>
-          <span style="margin-left: auto; font-size: 10px; color: var(--text-muted);">v2</span>
         </div>
       </div>
 
@@ -604,6 +603,6 @@
   <!-- Load shared modules BEFORE app.js so it can mount them dynamically -->
   <script src="/js/media-upload.js"></script>
   <script src="/js/voice-recorder.js"></script>
-  <script src="/v2/app.js?v=15"></script>
+  <script src="/app.js?v=16"></script>
 </body>
 </html>

@@ -189,6 +189,7 @@ function whisperTranscribeLocal(filePath) {
     ensureDir(join(__dirname, 'media', 'voice', 'transcripts'));
     const p = spawn('whisper', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
+    let stdout = '';
     let timedOut = false;
 
     const timeoutMs = Number(process.env.CLAWCONDOS_WHISPER_TIMEOUT_MS || 120_000);
@@ -197,6 +198,7 @@ function whisperTranscribeLocal(filePath) {
       try { p.kill('SIGKILL'); } catch {}
     }, timeoutMs);
 
+    p.stdout.on('data', d => { stdout += d.toString('utf-8'); });
     p.stderr.on('data', d => { stderr += d.toString('utf-8'); });
     p.on('error', (err) => {
       clearTimeout(timer);
@@ -209,8 +211,22 @@ function whisperTranscribeLocal(filePath) {
       // whisper writes <basename>.txt
       const base = filePath.split('/').pop().replace(/\.[^.]+$/, '');
       const outPath = join(__dirname, 'media', 'voice', 'transcripts', `${base}.txt`);
-      const text = safeReadFile(outPath, 500_000) || '';
-      resolve(text.trim());
+      let text = safeReadFile(outPath, 500_000) || '';
+      text = String(text || '').trim();
+
+      // Fallback: some environments don't emit the .txt file reliably even with code 0.
+      // Parse stdout segments like: "[00:00.000 --> 00:02.000]  hello"
+      if (!text) {
+        const lines = String(stdout || '').split(/\r?\n/);
+        const segs = [];
+        for (const ln of lines) {
+          const m = ln.match(/\]\s{2,}(.*)$/);
+          if (m && m[1] && m[1].trim()) segs.push(m[1].trim());
+        }
+        text = segs.join(' ').trim();
+      }
+
+      resolve(text);
     });
   });
 }
@@ -756,6 +772,7 @@ const server = createServer(async (req, res) => {
       ];
       if (!allowedRoots.some(r => full.startsWith(r))) throw new Error('Bad path');
       const text = await whisperTranscribeLocal(full);
+      console.log(`whisper :: transcribed ${full} chars=${(text || '').length}`);
       json(res, 200, { ok: true, text });
       return;
     } catch (e) {
@@ -802,8 +819,10 @@ const server = createServer(async (req, res) => {
   
   // Static files
   //
-  // v2 is served at root (/) from public/v2
-  // v1 remains reachable under /v1/* for safety during migration
+  // Single UI version (no /v2).
+  // - Canonical: /
+  // - Compatibility: /v2/* redirects to /*
+  // - Deprecated: /v1/* redirects to /
 
   // Serve Sharp's config module without colliding with Apps Gateway /lib/* handler
   if (pathname === '/clawcondos-lib/config.js') {
@@ -812,18 +831,22 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === '/' || pathname === '/v2' || pathname === '/v2/') {
-    const filePath = join(__dirname, 'public', 'v2', 'index.html');
+  if (pathname === '/' || pathname === '') {
+    const filePath = join(__dirname, 'public', 'index.html');
     serveFile(res, filePath);
     return;
   }
+
+  // Back-compat: redirect /v2/* → /*
+  if (pathname === '/v2' || pathname === '/v2/') {
+    res.writeHead(301, { Location: '/' });
+    res.end();
+    return;
+  }
   if (pathname.startsWith('/v2/')) {
-    const rel = pathname.slice('/v2/'.length);
-    let filePath = join(__dirname, 'public', 'v2', rel || 'index.html');
-    if (existsSync(filePath) && statSync(filePath).isDirectory()) {
-      filePath = join(filePath, 'index.html');
-    }
-    serveFile(res, filePath);
+    const rel = pathname.slice('/v2'.length); // keep leading '/'
+    res.writeHead(301, { Location: rel || '/' });
+    res.end();
     return;
   }
 
@@ -836,9 +859,9 @@ const server = createServer(async (req, res) => {
 
   if (pathname === '/app') pathname = '/app.html';
 
-  // Root /index.html → v2 index
+  // /index.html → canonical index
   if (pathname === '/index.html') {
-    const filePath = join(__dirname, 'public', 'v2', 'index.html');
+    const filePath = join(__dirname, 'public', 'index.html');
     serveFile(res, filePath);
     return;
   }

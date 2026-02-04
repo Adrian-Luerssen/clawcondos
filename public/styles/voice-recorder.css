@@ -1,0 +1,82 @@
+/**
+ * Sharp Voice Recorder Styles
+ */
+
+.voice-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.voice-btn:hover {
+  color: var(--text);
+  background: var(--bg-elevated);
+}
+
+.voice-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.voice-btn.recording {
+  color: #fff;
+  background: rgba(239, 68, 68, 0.9);
+}
+
+.voice-btn.recording:hover {
+  background: rgba(239, 68, 68, 1);
+}
+
+.voice-timer {
+  display: none;
+  font-size: 12px;
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  margin-left: 2px;
+}
+
+.voice-timer.visible {
+  display: inline-flex;
+}
+
+.voice-meter {
+  display: none;
+  width: 60px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+
+.voice-meter.visible {
+  display: block;
+}
+
+.voice-meter-level {
+  height: 100%;
+  width: 0%;
+  background: rgba(239, 68, 68, 0.9);
+  transition: width 0.08s linear;
+}
+
+.voice-hint {
+  display: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 2px 0;
+}
+
+.voice-hint.visible {
+  display: block;
+}

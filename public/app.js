@@ -2726,7 +2726,7 @@ function initAutoArchiveUI() {
                 const isAudio = String(u.mimeType || '').startsWith('audio/') || String(u.url || '').match(/\.(webm|m4a|mp3|wav|ogg)(\?|$)/i);
                 if (isAudio && u.serverPath) {
                   try {
-                    const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}`);
+                    const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}&cb=${Date.now()}`);
                     const data = await resp.json();
                     if (data?.ok && data.text) transcripts.push(data.text.trim());
                   } catch {}
@@ -2795,7 +2795,7 @@ function initAutoArchiveUI() {
               const isAudio = String(u.mimeType || '').startsWith('audio/') || String(u.url || '').match(/\.(webm|m4a|mp3|wav|ogg)(\?|$)/i);
               if (isAudio && u.serverPath) {
                 try {
-                  const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}`);
+                  const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}&cb=${Date.now()}`);
                   const data = await resp.json();
                   if (data?.ok && data.text) transcripts.push(data.text.trim());
                 } catch {}
@@ -6144,6 +6144,43 @@ Response format:
     // ═══════════════════════════════════════════════════════════════
     // CHAT
     // ═══════════════════════════════════════════════════════════════
+
+    // Convert Uint8Array to base64 (browser-safe)
+    function bytesToBase64(bytes) {
+      const chunkSize = 0x8000;
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+      return btoa(binary);
+    }
+
+    async function fetchUrlAsBase64(url) {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Failed to fetch media: ${resp.status}`);
+      const buf = await resp.arrayBuffer();
+      return bytesToBase64(new Uint8Array(buf));
+    }
+
+    async function buildGatewayAudioAttachmentsFromUploaded(uploaded) {
+      const out = [];
+      for (const u of (uploaded || [])) {
+        if (!u || !u.ok) continue;
+        const isAudio = String(u.mimeType || '').startsWith('audio/') || String(u.url || '').match(/\.(webm|m4a|mp3|wav|ogg)(\?|$)/i);
+        if (!isAudio) continue;
+        if (!u.url) continue;
+        const content = await fetchUrlAsBase64(u.url);
+        out.push({
+          type: 'audio',
+          mimeType: u.mimeType || 'audio/webm',
+          fileName: u.fileName || String(u.url).split('/').pop() || 'voice.webm',
+          content,
+        });
+      }
+      return out;
+    }
+
     async function sendMessage() {
       const input = document.getElementById('chatInput');
       const text = input.value.trim();
@@ -6190,7 +6227,7 @@ Response format:
                 const isAudio = String(u.mimeType || '').startsWith('audio/') || String(u.url || '').match(/\.(webm|m4a|mp3|wav|ogg)(\?|$)/i);
                 if (isAudio && u.serverPath) {
                   try {
-                    const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}`);
+                    const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}&cb=${Date.now()}`);
                     const data = await resp.json();
                     if (data?.ok && data.text) transcripts.push(data.text.trim());
                   } catch {}
@@ -6275,7 +6312,7 @@ Response format:
               const isAudio = String(u.mimeType || '').startsWith('audio/') || String(u.url || '').match(/\.(webm|m4a|mp3|wav|ogg)(\?|$)/i);
               if (isAudio && u.serverPath) {
                 try {
-                  const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}`);
+                  const resp = await fetch(`/api/whisper/transcribe?path=${encodeURIComponent(u.serverPath)}&cb=${Date.now()}`);
                   const data = await resp.json();
                   if (data?.ok && data.text) transcripts.push(data.text.trim());
                 } catch {}
