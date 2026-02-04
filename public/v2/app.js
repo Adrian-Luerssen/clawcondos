@@ -2448,12 +2448,31 @@ function initAutoArchiveUI() {
 
       if (!text && !hasMedia) return;
 
-      // If agent is busy, don't attempt to send attachments from goal view (we don't queue media yet).
+      // If agent is busy, queue goal messages (including attachments).
       if (state.isThinking) {
+        let queuedText = text;
+        let queuedAttachments = undefined;
+
         if (hasMedia) {
-          showToast('Agent is busy — wait or press Stop before sending attachments', 'warning', 5000);
-          return;
+          try {
+            queuedAttachments = await MediaUpload.buildGatewayAttachments();
+            if (!queuedText) {
+              const files = MediaUpload.getPendingFiles();
+              queuedText = files.map(f => `[attachment: ${f.file.name}]`).join('\n');
+            }
+            MediaUpload.clearFiles();
+          } catch (err) {
+            addChatMessageTo('goal', 'system', `Attachment prep error: ${err.message}`);
+            return;
+          }
         }
+
+        state.messageQueue.push({ text: queuedText || '', sessionKey: key, attachments: queuedAttachments });
+        updateQueueIndicator();
+        input.value = '';
+        autoResize(input);
+        addChatMessageTo('goal', 'user queued', queuedText || '[attachment]');
+        return;
       }
 
       input.value = '';
@@ -5393,18 +5412,31 @@ Response format:
       
       const sessionKey = state.currentSession.key;
       
-      // If agent is busy, queue the message (text only for now)
+      // If agent is busy, queue the message (supports attachments)
       if (state.isThinking) {
+        let queuedText = text;
+        let queuedAttachments = undefined;
+
         if (hasMedia) {
-          showToast('Agent is busy — wait or press Stop before sending attachments', 'warning', 5000);
-          return;
+          try {
+            queuedAttachments = await MediaUpload.buildGatewayAttachments();
+            if (!queuedText) {
+              const files = MediaUpload.getPendingFiles();
+              queuedText = files.map(f => `[attachment: ${f.file.name}]`).join('\n');
+            }
+            MediaUpload.clearFiles();
+          } catch (err) {
+            addChatMessage('system', `Attachment prep error: ${err.message}`);
+            return;
+          }
         }
-        if (text) {
-          state.messageQueue.push({ text, sessionKey });
+
+        if (queuedText || (queuedAttachments && queuedAttachments.length)) {
+          state.messageQueue.push({ text: queuedText || '', sessionKey, attachments: queuedAttachments });
           updateQueueIndicator();
           input.value = '';
           input.style.height = 'auto';
-          addChatMessage('user queued', text);
+          addChatMessage('user queued', queuedText || '[attachment]');
         }
         return;
       }
@@ -5480,7 +5512,7 @@ Response format:
         queuedMsgs[0].classList.remove('queued');
       }
       
-      processMessage(next.text, next.sessionKey);
+      processMessage(next.text, next.sessionKey, next.attachments);
     }
     
     function updateQueueIndicator() {
