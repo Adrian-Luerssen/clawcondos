@@ -2974,6 +2974,36 @@ body {
   flex: 1; 
 }
 
+.verbose-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-right: 10px;
+  background: rgba(255,255,255,0.02);
+}
+
+.verbose-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  padding: var(--space-xs) 10px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-family: var(--font-sans);
+  transition: all var(--transition-fast);
+}
+
+.verbose-btn:hover {
+  color: var(--text);
+  background: rgba(255,255,255,0.04);
+}
+
+.verbose-btn.active {
+  color: var(--accent);
+  background: rgba(91,156,244,0.10);
+}
+
 .export-btn {
   background: none;
   border: 1px solid var(--border);

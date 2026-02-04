@@ -466,6 +466,13 @@
           <span class="session-info-item">🤖 <span class="session-badge" id="sessionModel">-</span></span>
           <span class="session-info-item">📊 <span id="sessionTokens">-</span> tokens</span>
           <span class="session-info-spacer"></span>
+
+          <div class="verbose-toggle" id="verboseToggle" title="Debug visibility: sends /verbose on|full|off to this session">
+            <button class="verbose-btn" data-verbose="off" onclick="setVerboseMode('off')">V off</button>
+            <button class="verbose-btn" data-verbose="on" onclick="setVerboseMode('on')">V on</button>
+            <button class="verbose-btn" data-verbose="full" onclick="setVerboseMode('full')">V full</button>
+          </div>
+
           <button class="export-btn" onclick="exportChatAsMarkdown()" title="Export as Markdown">
             <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
             Export
@@ -634,6 +641,9 @@
       
       // Custom session names
       sessionNames: JSON.parse(localStorage.getItem('sharp_session_names') || '{}'),
+
+      // Per-session UI verbose toggle (best-effort; actual runtime state lives server-side)
+      verboseBySession: JSON.parse(localStorage.getItem('sharp_verbose_by_session') || '{}'),
       
       // Search & Filters
       searchQuery: '',
@@ -4169,6 +4179,7 @@ Response format:
       document.getElementById('sessionKeyDisplay').textContent = session.key;
       document.getElementById('sessionModel').textContent = session.model?.split('/').pop() || 'unknown';
       document.getElementById('sessionTokens').textContent = session.totalTokens?.toLocaleString() || '0';
+      updateVerboseToggleUI();
       
       const actionBtn = document.getElementById('headerAction');
       if (session.key === 'agent:main:main') {
@@ -4852,6 +4863,40 @@ Response format:
       if (stopBtn) stopBtn.disabled = !state.isThinking;
     }
     
+    function updateVerboseToggleUI() {
+      const wrap = document.getElementById('verboseToggle');
+      if (!wrap) return;
+      const key = state.currentSession?.key;
+      const level = (key && state.verboseBySession[key]) ? state.verboseBySession[key] : 'off';
+      wrap.querySelectorAll('.verbose-btn').forEach(btn => {
+        const v = btn.getAttribute('data-verbose');
+        btn.classList.toggle('active', v === level);
+      });
+    }
+
+    async function setVerboseMode(level) {
+      if (!state.currentSession) return;
+      const key = state.currentSession.key;
+      const normalized = (level === 'full' || level === 'on' || level === 'off') ? level : 'off';
+
+      // Persist for UI purposes (server-side is authoritative, but this keeps UX stable)
+      state.verboseBySession[key] = normalized;
+      localStorage.setItem('sharp_verbose_by_session', JSON.stringify(state.verboseBySession));
+      updateVerboseToggleUI();
+
+      try {
+        const idempotencyKey = `verbose-${key}-${Date.now()}`;
+        await rpcCall('chat.send', {
+          sessionKey: key,
+          message: `/verbose ${normalized}`,
+          idempotencyKey
+        }, 10000);
+        addChatMessage('system', `Verbose → ${normalized}`);
+      } catch (err) {
+        addChatMessage('system', `Failed to set verbose: ${err.message}`);
+      }
+    }
+
     async function stopAgent() {
       if (!state.isThinking || !state.currentSession) return;
       
