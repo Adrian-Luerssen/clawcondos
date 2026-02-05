@@ -111,6 +111,32 @@ describe('GoalHandlers', () => {
       expect(updated.updatedAtMs).toBeGreaterThanOrEqual(updated.createdAtMs);
     });
 
+    it('trims title on update', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const id = r1.getResult().payload.goal.id;
+
+      const r2 = makeResponder();
+      handlers['goals.update']({ params: { id, title: '  Trimmed  ' }, respond: r2.respond });
+      expect(r2.getResult().payload.goal.title).toBe('Trimmed');
+    });
+
+    it('ignores internal fields in patch', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goal = r1.getResult().payload.goal;
+
+      const r2 = makeResponder();
+      handlers['goals.update']({
+        params: { id: goal.id, createdAtMs: 0, sessions: ['hacked'], title: 'Safe' },
+        respond: r2.respond,
+      });
+      const updated = r2.getResult().payload.goal;
+      expect(updated.title).toBe('Safe');
+      expect(updated.createdAtMs).toBe(goal.createdAtMs);
+      expect(updated.sessions).toEqual([]);
+    });
+
     it('syncs completed and status fields', () => {
       const r1 = makeResponder();
       handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
@@ -216,6 +242,35 @@ describe('GoalHandlers', () => {
         respond,
       });
       expect(getResult().payload.goalId).toBeNull();
+    });
+  });
+
+  describe('goals.removeSession', () => {
+    it('removes a session from a goal and cleans up index', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const id = r1.getResult().payload.goal.id;
+
+      handlers['goals.addSession']({
+        params: { id, sessionKey: 'agent:main:main' },
+        respond: makeResponder().respond,
+      });
+
+      const r2 = makeResponder();
+      handlers['goals.removeSession']({
+        params: { id, sessionKey: 'agent:main:main' },
+        respond: r2.respond,
+      });
+      expect(r2.getResult().ok).toBe(true);
+      expect(r2.getResult().payload.goal.sessions).not.toContain('agent:main:main');
+
+      // Session index should be cleaned up
+      const r3 = makeResponder();
+      handlers['goals.sessionLookup']({
+        params: { sessionKey: 'agent:main:main' },
+        respond: r3.respond,
+      });
+      expect(r3.getResult().payload.goalId).toBeNull();
     });
   });
 

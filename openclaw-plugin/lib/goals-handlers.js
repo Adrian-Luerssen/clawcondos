@@ -68,17 +68,19 @@ export function createGoalHandlers(store) {
           return;
         }
         const goal = data.goals[idx];
-        const patch = { ...params };
-        delete patch.id;
 
-        // Merge patch
-        Object.assign(goal, patch);
+        // Whitelist allowed patch fields (prevent overwriting internal fields)
+        const allowed = ['title', 'description', 'status', 'completed', 'condoId', 'priority', 'deadline', 'notes', 'tasks'];
+        for (const f of allowed) {
+          if (f in params) goal[f] = params[f];
+        }
+        if (typeof goal.title === 'string') goal.title = goal.title.trim();
         goal.updatedAtMs = Date.now();
 
         // Sync completed/status
-        if ('status' in patch) {
+        if ('status' in params) {
           goal.completed = goal.status === 'done';
-        } else if ('completed' in patch) {
+        } else if ('completed' in params) {
           goal.status = goal.completed ? 'done' : 'active';
         }
 
