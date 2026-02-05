@@ -45,3 +45,60 @@ describe('buildGoalContext', () => {
     expect(ctx).toContain('2');
   });
 });
+
+describe('buildGoalContext with sibling sessions', () => {
+  const goal = {
+    id: 'goal_1', title: 'Ship v2', description: '', status: 'active',
+    priority: null, deadline: null,
+    tasks: [
+      { id: 't1', text: 'Build API', done: true, sessionKey: 'agent:main:s1', summary: 'Done - all endpoints built' },
+      { id: 't2', text: 'Write tests', done: false, sessionKey: 'agent:main:s2' },
+      { id: 't3', text: 'Deploy', done: false, sessionKey: null },
+    ],
+    sessions: ['agent:main:s1', 'agent:main:s2'],
+  };
+
+  it('includes task-session assignments', () => {
+    const ctx = buildGoalContext(goal, { currentSessionKey: 'agent:main:s2' });
+    expect(ctx).toContain('Write tests');
+    expect(ctx).toContain('(you)');
+  });
+
+  it('includes completed task summaries', () => {
+    const ctx = buildGoalContext(goal, { currentSessionKey: 'agent:main:s2' });
+    expect(ctx).toContain('Done - all endpoints built');
+  });
+
+  it('marks unassigned tasks', () => {
+    const ctx = buildGoalContext(goal, { currentSessionKey: 'agent:main:s2' });
+    expect(ctx).toContain('Deploy');
+    expect(ctx).toContain('unassigned');
+  });
+
+  it('shows assigned session key for other sessions', () => {
+    const ctx = buildGoalContext(goal, { currentSessionKey: 'agent:main:s2' });
+    expect(ctx).toContain('(assigned: agent:main:s1)');
+  });
+});
+
+describe('auto-completion prompt', () => {
+  it('includes reminder to use goal_update tool', () => {
+    const goal = {
+      id: 'g1', title: 'G', description: '', status: 'active',
+      tasks: [{ id: 't1', text: 'Do thing', done: false }],
+      sessions: ['agent:main:main'],
+    };
+    const ctx = buildGoalContext(goal, { currentSessionKey: 'agent:main:main' });
+    expect(ctx).toContain('goal_update');
+  });
+
+  it('does not include prompt when all tasks are done', () => {
+    const goal = {
+      id: 'g1', title: 'G', description: '', status: 'done',
+      tasks: [{ id: 't1', text: 'Done thing', done: true }],
+      sessions: [],
+    };
+    const ctx = buildGoalContext(goal);
+    expect(ctx).not.toContain('goal_update');
+  });
+});
