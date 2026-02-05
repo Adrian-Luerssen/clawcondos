@@ -193,6 +193,28 @@ describe('CondoHandlers', () => {
       expect(r2.getResult().payload.condo.name).toBe('Trimmed');
     });
 
+    it('rejects empty name after trim', () => {
+      const r1 = makeResponder();
+      handlers['condos.create']({ params: { name: 'C' }, respond: r1.respond });
+      const id = r1.getResult().payload.condo.id;
+
+      const r2 = makeResponder();
+      handlers['condos.update']({ params: { id, name: '   ' }, respond: r2.respond });
+      expect(r2.getResult().ok).toBe(false);
+      expect(r2.getResult().error.message).toBe('name is required');
+    });
+
+    it('rejects non-string name', () => {
+      const r1 = makeResponder();
+      handlers['condos.create']({ params: { name: 'C' }, respond: r1.respond });
+      const id = r1.getResult().payload.condo.id;
+
+      const r2 = makeResponder();
+      handlers['condos.update']({ params: { id, name: 123 }, respond: r2.respond });
+      expect(r2.getResult().ok).toBe(false);
+      expect(r2.getResult().error.message).toBe('name is required');
+    });
+
     it('returns error for missing condo', () => {
       const { respond, getResult } = makeResponder();
       handlers['condos.update']({ params: { id: 'condo_nonexistent', name: 'X' }, respond });

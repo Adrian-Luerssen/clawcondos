@@ -21,6 +21,12 @@ export function createTaskSpawnHandler(store) {
         return;
       }
 
+      // Guard against re-spawning already-assigned tasks
+      if (task.sessionKey) {
+        respond(false, undefined, { message: 'Task already has a session' });
+        return;
+      }
+
       // Generate a session key for the spawned subagent
       const suffix = store.newId('spawn').replace('spawn_', '');
       const agent = agentId || 'main';

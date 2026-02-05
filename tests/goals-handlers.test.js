@@ -361,6 +361,17 @@ describe('GoalHandlers', () => {
       expect(getResult().ok).toBe(false);
     });
 
+    it('rejects whitespace-only text', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      const { respond, getResult } = makeResponder();
+      handlers['goals.addTask']({ params: { goalId, text: '   ' }, respond });
+      expect(getResult().ok).toBe(false);
+      expect(getResult().error.message).toBe('goalId and text are required');
+    });
+
     it('trims task text', () => {
       const r1 = makeResponder();
       handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
@@ -390,12 +401,11 @@ describe('GoalHandlers', () => {
 
       const r3 = makeResponder();
       handlers['goals.updateTask']({
-        params: { goalId, taskId, status: 'in-progress', sessionKey: 'agent:main:main' },
+        params: { goalId, taskId, status: 'in-progress' },
         respond: r3.respond,
       });
       const updated = r3.getResult().payload.task;
       expect(updated.status).toBe('in-progress');
-      expect(updated.sessionKey).toBe('agent:main:main');
     });
 
     it('syncs done flag with status', () => {
@@ -459,6 +469,27 @@ describe('GoalHandlers', () => {
       expect(updated.text).toBe('Safe');
       expect(updated.createdAtMs).toBe(task.createdAtMs);
       expect(updated.id).toBe(task.id);
+    });
+
+    it('cannot set sessionKey directly (removed from whitelist)', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      const r2 = makeResponder();
+      handlers['goals.addTask']({
+        params: { goalId, text: 'Task' },
+        respond: r2.respond,
+      });
+      const taskId = r2.getResult().payload.task.id;
+
+      const r3 = makeResponder();
+      handlers['goals.updateTask']({
+        params: { goalId, taskId, sessionKey: 'agent:main:main' },
+        respond: r3.respond,
+      });
+      expect(r3.getResult().ok).toBe(true);
+      expect(r3.getResult().payload.task.sessionKey).toBeNull();
     });
   });
 

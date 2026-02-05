@@ -211,7 +211,7 @@ export function createGoalHandlers(store) {
     'goals.addTask': ({ params, respond }) => {
       try {
         const { goalId, text, description, priority, dependsOn } = params;
-        if (!goalId || !text) {
+        if (!goalId || !text || typeof text !== 'string' || !text.trim()) {
           respond(false, undefined, { message: 'goalId and text are required' });
           return;
         }
@@ -263,7 +263,7 @@ export function createGoalHandlers(store) {
           return;
         }
         // Whitelist allowed patch fields
-        const allowed = ['text', 'description', 'status', 'done', 'priority', 'sessionKey', 'dependsOn', 'summary'];
+        const allowed = ['text', 'description', 'status', 'done', 'priority', 'dependsOn', 'summary'];
         for (const f of allowed) {
           if (f in params) task[f] = params[f];
         }

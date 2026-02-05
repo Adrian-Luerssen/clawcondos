@@ -66,6 +66,12 @@ export function createCondoHandlers(store) {
         }
         const condo = data.condos[idx];
 
+        // Validate name if provided (match condos.create rigor)
+        if ('name' in params && (!params.name || typeof params.name !== 'string' || !params.name.trim())) {
+          respond(false, undefined, { message: 'name is required' });
+          return;
+        }
+
         // Whitelist allowed patch fields (prevent overwriting internal fields)
         const allowed = ['name', 'description', 'color'];
         for (const f of allowed) {

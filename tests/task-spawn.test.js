@@ -118,6 +118,25 @@ describe('goals.spawnTaskSession', () => {
     expect(getResult().ok).toBe(false);
   });
 
+  it('rejects already-spawned task', () => {
+    // First spawn succeeds
+    const r1 = makeResponder();
+    handler({
+      params: { goalId: 'goal_1', taskId: 'task_1', agentId: 'main' },
+      respond: r1.respond,
+    });
+    expect(r1.getResult().ok).toBe(true);
+
+    // Second spawn of same task rejected
+    const r2 = makeResponder();
+    handler({
+      params: { goalId: 'goal_1', taskId: 'task_1', agentId: 'main' },
+      respond: r2.respond,
+    });
+    expect(r2.getResult().ok).toBe(false);
+    expect(r2.getResult().error.message).toBe('Task already has a session');
+  });
+
   it('rejects missing taskId', () => {
     const { respond, getResult } = makeResponder();
     handler({
