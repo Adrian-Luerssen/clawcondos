@@ -1021,8 +1021,25 @@ server.on('upgrade', (req, socket, head) => {
         try { upstreamWs.close(code, reason); } catch {}
       };
 
+      const pendingToUpstream = [];
+      const MAX_PENDING = 128;
+
+      const sendUpstream = (payload) => {
+        if (upstreamWs.readyState === WebSocket.OPEN) {
+          upstreamWs.send(payload);
+          return true;
+        }
+        // Buffer until upstream is open (prevents gateway handshake timeouts if client sends connect immediately)
+        if (pendingToUpstream.length < MAX_PENDING) pendingToUpstream.push(payload);
+        return false;
+      };
+
       upstreamWs.on('open', () => {
-        // ready
+        // Flush buffered frames
+        while (pendingToUpstream.length) {
+          const p = pendingToUpstream.shift();
+          try { upstreamWs.send(p); } catch { break; }
+        }
       });
 
       upstreamWs.on('message', (data) => {
@@ -1044,7 +1061,7 @@ server.on('upgrade', (req, socket, head) => {
       clientWs.on('message', (data) => {
         const rewritten = rewriteConnectFrame(data, gatewayAuth);
         try {
-          if (upstreamWs.readyState === WebSocket.OPEN) upstreamWs.send(rewritten);
+          sendUpstream(rewritten);
         } catch {
           closeBoth(1011, 'proxy send failed');
         }
