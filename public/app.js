@@ -2076,9 +2076,7 @@ function initAutoArchiveUI() {
     
     async function loadSessionCondos() {
       try {
-        const res = await fetch('/api/session-condos');
-        if (!res.ok) return;
-        const data = await res.json();
+        const data = await rpcCall('goals.listSessionCondos', {});
         state.sessionCondoIndex = data.sessionCondoIndex || {};
       } catch (err) {
         console.warn('[ClawCondos] Failed to load session condos:', err);
@@ -2106,11 +2104,7 @@ function initAutoArchiveUI() {
 
       // Best-effort persist (data-level)
       try {
-        await fetch('/api/session-condo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionKey: key, condoId: cid }),
-        });
+        await rpcCall('goals.setSessionCondo', { sessionKey: key, condoId: cid });
       } catch (err) {
         console.warn('persistSessionCondo failed:', err.message || err);
       }
@@ -2118,9 +2112,7 @@ function initAutoArchiveUI() {
 
     async function loadGoals() {
       try {
-        const res = await fetch('/api/goals');
-        if (!res.ok) return;
-        const data = await res.json();
+        const data = await rpcCall('goals.list', {});
         state.goals = (data.goals || []).map(g => {
           if (!g.condoId && Array.isArray(g.sessions) && g.sessions.length > 0) {
             g.condoId = getCondoIdForSessionKey(g.sessions[0]);
@@ -2612,19 +2604,7 @@ function initAutoArchiveUI() {
 
       try {
         // Attach session to goal first so it shows up immediately.
-        const attachRes = await fetch(`/api/goals/${encodeURIComponent(goalId)}/sessions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionKey }),
-        });
-        if (!attachRes.ok) {
-          let msg = 'Failed to attach session to goal';
-          try {
-            const j = await attachRes.json();
-            if (j?.error) msg = String(j.error);
-          } catch {}
-          throw new Error(msg);
-        }
+        await rpcCall('goals.addSession', { id: goalId, sessionKey });
 
         state.goalChatSessionKey = sessionKey;
 
@@ -3273,13 +3253,7 @@ function initAutoArchiveUI() {
 
     async function updateGoal(goalId, patch, opts = {}) {
       try {
-        const res = await fetch(`/api/goals/${encodeURIComponent(goalId)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(patch),
-        });
-        if (!res.ok) throw new Error('Failed');
-        const data = await res.json();
+        const data = await rpcCall('goals.update', { id: goalId, ...patch });
         const idx = state.goals.findIndex(g => g.id === goalId);
         if (idx !== -1 && data?.goal) state.goals[idx] = data.goal;
 
@@ -3610,12 +3584,7 @@ function initAutoArchiveUI() {
         return;
       }
       try {
-        const res = await fetch(`/api/goals/${encodeURIComponent(goalId)}/sessions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionKey }),
-        });
-        if (!res.ok) throw new Error('Failed');
+        await rpcCall('goals.addSession', { id: goalId, sessionKey });
         hideAttachSessionModal();
         await loadGoals();
         renderSessions();
@@ -3837,26 +3806,16 @@ If none fit well, include a suggestion with goalId:null and a proposed new goal 
       if (!sessionKey || !title) return;
       
       try {
-        const res = await fetch('/api/goals', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, condoId: getCondoIdForSessionKey(sessionKey) }),
-        });
-        if (!res.ok) throw new Error('Failed to create goal');
-        const data = await res.json();
-        
+        const data = await rpcCall('goals.create', { title, condoId: getCondoIdForSessionKey(sessionKey) });
+
         if (data?.goal?.id) {
-          await fetch(`/api/goals/${data.goal.id}/sessions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionKey }),
-          });
+          await rpcCall('goals.addSession', { id: data.goal.id, sessionKey });
         }
-        
+
         hideSuggestGoalModal();
         await loadGoals();
         renderSessions();
-        
+
       } catch (e) {
         document.getElementById('suggestGoalError').textContent = 'Failed: ' + e.message;
         document.getElementById('suggestGoalError').style.display = 'block';
@@ -3890,19 +3849,14 @@ If none fit well, include a suggestion with goalId:null and a proposed new goal 
     async function assignSessionToGoal(goalId) {
       const sessionKey = state.suggestingSessionKey;
       if (!sessionKey) return;
-      
+
       try {
-        const res = await fetch(`/api/goals/${goalId}/sessions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionKey }),
-        });
-        if (!res.ok) throw new Error('Failed to assign');
-        
+        await rpcCall('goals.addSession', { id: goalId, sessionKey });
+
         hideSuggestGoalModal();
         await loadGoals();
         renderSessions();
-        
+
       } catch (e) {
         document.getElementById('suggestGoalError').textContent = 'Failed to assign: ' + e.message;
         document.getElementById('suggestGoalError').style.display = 'block';
@@ -3921,27 +3875,17 @@ If none fit well, include a suggestion with goalId:null and a proposed new goal 
       
       try {
         // Create goal
-        const res = await fetch('/api/goals', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, condoId: getCondoIdForSessionKey(sessionKey) }),
-        });
-        if (!res.ok) throw new Error('Failed to create goal');
-        const data = await res.json();
-        
+        const data = await rpcCall('goals.create', { title, condoId: getCondoIdForSessionKey(sessionKey) });
+
         // Assign session to new goal
         if (sessionKey && data?.goal?.id) {
-          await fetch(`/api/goals/${data.goal.id}/sessions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionKey }),
-          });
+          await rpcCall('goals.addSession', { id: data.goal.id, sessionKey });
         }
-        
+
         hideSuggestGoalModal();
         await loadGoals();
         renderSessions();
-        
+
       } catch (e) {
         document.getElementById('suggestGoalError').textContent = 'Failed: ' + e.message;
         document.getElementById('suggestGoalError').style.display = 'block';
@@ -4303,33 +4247,20 @@ Response format:
       try {
         if (proposal.goalId && !proposal.isNew) {
           // Assign to existing goal
-          await fetch(`/api/goals/${proposal.goalId}/sessions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionKey }),
-          });
+          await rpcCall('goals.addSession', { id: proposal.goalId, sessionKey });
         } else {
           // Create new goal and assign
-          const res = await fetch('/api/goals', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: proposal.title || 'New Goal', condoId: getCondoIdForSessionKey(sessionKey) }),
-          });
-          const data = await res.json();
+          const data = await rpcCall('goals.create', { title: proposal.title || 'New Goal', condoId: getCondoIdForSessionKey(sessionKey) });
           if (data?.goal?.id) {
-            await fetch(`/api/goals/${data.goal.id}/sessions`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sessionKey }),
-            });
+            await rpcCall('goals.addSession', { id: data.goal.id, sessionKey });
             // Refresh goals
             await loadGoals();
           }
         }
-        
+
         state.wizardOrganized++;
         nextWizardSession();
-        
+
       } catch (e) {
         console.error('Failed to assign:', e);
         showToast('Failed to assign: ' + e.message, 'error');
@@ -4339,17 +4270,13 @@ Response format:
     async function assignWizardGoal(goalId) {
       const sessionKey = state.wizardSessions[state.wizardIndex]?.key;
       if (!sessionKey) return;
-      
+
       try {
-        await fetch(`/api/goals/${goalId}/sessions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionKey }),
-        });
-        
+        await rpcCall('goals.addSession', { id: goalId, sessionKey });
+
         state.wizardOrganized++;
         nextWizardSession();
-        
+
       } catch (e) {
         showToast('Failed to assign: ' + e.message, 'error');
       }
@@ -4363,26 +4290,17 @@ Response format:
       if (!sessionKey) return;
       
       try {
-        const res = await fetch('/api/goals', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, condoId: getCondoIdForSessionKey(state.wizardPendingSessionKey) }),
-        });
-        const data = await res.json();
-        
+        const data = await rpcCall('goals.create', { title, condoId: getCondoIdForSessionKey(state.wizardPendingSessionKey) });
+
         if (data?.goal?.id) {
-          await fetch(`/api/goals/${data.goal.id}/sessions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionKey }),
-          });
+          await rpcCall('goals.addSession', { id: data.goal.id, sessionKey });
           await loadGoals();
         }
-        
+
         document.getElementById('wizardNewGoalTitle').value = '';
         state.wizardOrganized++;
         nextWizardSession();
-        
+
       } catch (e) {
         showToast('Failed: ' + e.message, 'error');
       }
@@ -4422,13 +4340,7 @@ Response format:
         return;
       }
       try {
-        const res = await fetch('/api/goals', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, deadline: deadline || null, condoId: state.currentCondoId || state.newGoalCondoId || null }),
-        });
-        if (!res.ok) throw new Error('Failed to create goal');
-        const data = await res.json();
+        const data = await rpcCall('goals.create', { title, deadline: deadline || null, condoId: state.currentCondoId || state.newGoalCondoId || null });
         hideCreateGoalModal();
         await loadGoals();
         if (data?.goal?.id) setCurrentGoal(data.goal.id);
@@ -6587,11 +6499,7 @@ Response format:
           await rpcCall('chat.send', { sessionKey, message: 'Hello!', idempotencyKey });
         }
         if (goalId) {
-          await fetch(`/api/goals/${encodeURIComponent(goalId)}/sessions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionKey }),
-          });
+          await rpcCall('goals.addSession', { id: goalId, sessionKey });
         }
         await loadSessions();
         await loadGoals();
@@ -6615,13 +6523,7 @@ Response format:
         return;
       }
       try {
-        const res = await fetch('/api/goals', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, notes: description || '', condoId: state.newGoalCondoId || state.currentCondoId || null }),
-        });
-        if (!res.ok) throw new Error('Failed to create goal');
-        const data = await res.json();
+        const data = await rpcCall('goals.create', { title, notes: description || '', condoId: state.newGoalCondoId || state.currentCondoId || null });
         await loadGoals();
         const startSession = document.querySelector('input[name="startGoalSession"]:checked')?.value === 'yes';
         if (startSession && data?.goal?.id) {
