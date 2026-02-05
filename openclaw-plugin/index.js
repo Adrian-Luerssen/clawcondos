@@ -28,5 +28,19 @@ export default function register(api) {
     return { prependContext: context };
   });
 
+  // Hook: track session activity on goals
+  api.registerHook('agent_end', async (event) => {
+    const sessionKey = event.context?.sessionKey;
+    if (!sessionKey || !event.success) return;
+    const data = store.load();
+    const entry = data.sessionIndex[sessionKey];
+    if (!entry) return;
+    const goal = data.goals.find(g => g.id === entry.goalId);
+    if (!goal) return;
+    goal.updatedAtMs = Date.now();
+    store.save(data);
+    api.logger.info(`clawcondos-goals: agent_end for session ${sessionKey} (goal: ${goal.title})`);
+  });
+
   api.logger.info(`clawcondos-goals: registered ${Object.keys(handlers).length} gateway methods, data at ${dataDir}`);
 }
