@@ -201,25 +201,13 @@ All handlers follow consistent validation:
 
 ## Installation
 
-The plugin lives in the ClawCondos repo and is symlinked into OpenClaw's extensions directory:
+The plugin lives in the ClawCondos repo at `clawcondos/condo-management/`. Install it into OpenClaw using the link flag (recommended for development — edits take effect on gateway restart):
 
 ```bash
-ln -sf /path/to/clawcondos/clawcondos/condo-management ~/.openclaw/extensions/clawcondos-goals
+cd /path/to/clawcondos
+openclaw plugins install -l ./clawcondos/condo-management
 ```
 
-Configure in `~/.openclaw/openclaw.json`:
-
-```json
-{
-  "plugins": {
-    "enabled": true,
-    "entries": {
-      "clawcondos-goals": {
-        "enabled": true
-      }
-    }
-  }
-}
-```
+This registers the plugin, creates the config entries, and symlinks to the source directory. Restart the gateway to load it.
 
 Optional: set `dataDir` in plugin config to override the default `.data/` directory.
