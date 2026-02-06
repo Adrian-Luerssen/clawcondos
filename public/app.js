@@ -1737,6 +1737,7 @@ function initAutoArchiveUI() {
       switch (status) {
         case 'connected':
           dot.style.background = 'var(--green)';
+          dot.title = 'Connected to gateway';
           text.textContent = 'Connected';
           // Clear offline status for all sessions when reconnected
           for (const key of Object.keys(state.sessionAgentStatus)) {
@@ -1747,10 +1748,12 @@ function initAutoArchiveUI() {
           break;
         case 'connecting':
           dot.style.background = 'var(--yellow)';
+          dot.title = 'Connecting to gateway...';
           text.textContent = 'Connecting...';
           break;
         case 'error':
           dot.style.background = 'var(--red)';
+          dot.title = 'Disconnected from gateway';
           text.textContent = 'Disconnected';
           // Set all sessions to offline when disconnected
           for (const key of Object.keys(state.sessionAgentStatus)) {
@@ -8828,7 +8831,7 @@ Response format:
               <div class="card-name">${escapeHtml(app.name)}</div>
               <div class="card-desc">${escapeHtml(app.description || '')}</div>
             </div>
-            <div class="card-status-dot idle" id="app-grid-status-${escapeHtml(app.id)}"></div>
+            <div class="card-status-dot idle" id="app-grid-status-${escapeHtml(app.id)}" title="Checking..."></div>
           </div>
           <div class="card-footer">
             <span>Port ${app.port}</span>
@@ -8848,9 +8851,12 @@ Response format:
       
       try {
         const res = await fetch(`/${app.id}/`, { method: 'HEAD' });
-        dot.className = 'card-status-dot ' + (res.ok || res.status === 401 ? 'active' : 'error');
+        const ok = res.ok || res.status === 401;
+        dot.className = 'card-status-dot ' + (ok ? 'active' : 'error');
+        dot.title = ok ? 'App is running' : 'App is not responding';
       } catch {
         dot.className = 'card-status-dot error';
+        dot.title = 'App is not responding';
       }
     }
     
