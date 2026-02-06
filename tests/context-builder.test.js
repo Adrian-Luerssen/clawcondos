@@ -205,6 +205,20 @@ describe('buildProjectSummary', () => {
   it('returns null for goals not in an array', () => {
     expect(buildProjectSummary(condo, null, 'goal_1')).toBeNull();
   });
+
+  it('defaults missing status to active (matching goal creation default)', () => {
+    const goalsWithNoStatus = [
+      { id: 'goal_x', title: 'No Status Goal', tasks: [] },
+    ];
+    const result = buildProjectSummary(condo, goalsWithNoStatus, 'other');
+    expect(result).toContain('[active] No Status Goal');
+  });
+
+  it('handles currentGoalId that does not match any goal', () => {
+    const result = buildProjectSummary(condo, goals, 'nonexistent_goal');
+    expect(result).not.toContain('← this goal');
+    expect(result).toContain('Ship Landing Page');
+  });
 });
 
 describe('buildCondoContext', () => {

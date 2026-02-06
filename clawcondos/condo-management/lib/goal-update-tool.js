@@ -45,13 +45,24 @@ export function createGoalUpdateExecutor(store) {
       // Cross-goal operation
       const ownGoal = data.goals.find(g => g.id === ownEntry.goalId);
       if (!ownGoal?.condoId || ownGoal.condoId !== goal.condoId) {
-        return error('Can only contribute to goals in the same project.');
+        return error('can only contribute to goals in the same project.');
       }
       if (goal.status === 'done' || goal.completed) {
-        return error('Cannot modify a completed goal.');
+        return error('cannot modify a completed goal.');
       }
       if (hasTaskUpdate || hasGoalStatus || hasNextTask) {
-        return error('Cross-goal: only addTasks and notes allowed on sibling goals.');
+        return error('cross-goal: only addTasks and notes allowed on sibling goals.');
+      }
+    }
+
+    // ── Validate goalStatus:"done" early (before any mutations) ──
+    if (hasGoalStatus && goalStatus === 'done') {
+      const tasks = goal.tasks || [];
+      // Account for a task being marked done in this same call
+      const willMarkDone = hasTaskUpdate && status === 'done' && taskId;
+      const pending = tasks.filter(t => !t.done && t.id !== (willMarkDone ? taskId : undefined));
+      if (pending.length > 0) {
+        return error(`cannot mark goal done — ${pending.length} task${pending.length > 1 ? 's' : ''} still pending.`);
       }
     }
 
@@ -71,6 +82,8 @@ export function createGoalUpdateExecutor(store) {
 
       if (status === 'in-progress') {
         goal.nextTask = task.text;
+      } else if (status === 'done') {
+        goal.nextTask = null;
       }
     }
 
@@ -112,10 +125,6 @@ export function createGoalUpdateExecutor(store) {
     // ── Goal status ──
     if (hasGoalStatus) {
       if (goalStatus === 'done') {
-        const pending = (goal.tasks || []).filter(t => !t.done);
-        if (pending.length > 0) {
-          return error(`cannot mark goal done — ${pending.length} task${pending.length > 1 ? 's' : ''} still pending.`);
-        }
         goal.status = 'done';
         goal.completed = true;
         results.push('goal marked done');

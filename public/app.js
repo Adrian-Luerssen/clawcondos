@@ -2603,14 +2603,14 @@ function initAutoArchiveUI() {
       const hasCondo = !!goal.condoId;
       const kickoff = [
         `Execute this goal autonomously.`,
-        hasCondo ? `The project summary above is context only — focus on this goal's tasks.` : '',
+        hasCondo ? `The project summary above is context only — focus on this goal's tasks.` : null,
         ``,
         hasTasks
           ? `Workflow: pick a pending task, mark in-progress, do the work, mark done with a summary, then next task. When all tasks are done, set goalStatus: "done". If blocked, mark the task "blocked" and explain.`
           : `First, break this into 2-5 concrete tasks using goal_update({ addTasks: [...] }). Then execute each: mark in-progress, do the work, mark done. When all tasks are done, set goalStatus: "done".`,
         ``,
         `Begin.`,
-      ].filter(Boolean).join('\n');
+      ].filter(line => line != null).join('\n');
 
       try {
         // Attach session to goal first so it shows up immediately.

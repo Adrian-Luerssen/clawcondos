@@ -53,7 +53,7 @@ export function buildProjectSummary(condo, goals, currentGoalId) {
 
   for (let i = 0; i < shown.length; i++) {
     const g = shown[i];
-    const status = g.status || 'pending';
+    const status = g.status || 'active';
     let suffix = '';
     if (g.id === currentGoalId) {
       suffix = ' ← this goal';
@@ -73,6 +73,14 @@ export function buildProjectSummary(condo, goals, currentGoalId) {
   return lines.join('\n');
 }
 
+export function getProjectSummaryForGoal(goal, data) {
+  if (!goal?.condoId) return null;
+  const condo = data.condos.find(c => c.id === goal.condoId);
+  if (!condo) return null;
+  const siblingGoals = data.goals.filter(g => g.condoId === goal.condoId);
+  return buildProjectSummary(condo, siblingGoals, goal.id);
+}
+
 export function buildCondoContext(condo, goals, opts = {}) {
   if (!condo) return null;
   const { currentSessionKey } = opts;
@@ -88,7 +96,7 @@ export function buildCondoContext(condo, goals, opts = {}) {
     for (const goal of goals) {
       const goalBlock = buildGoalContext(goal, { currentSessionKey });
       if (goalBlock) {
-        // Indent goal context under condo (replace top-level # with ###)
+        // Demote Markdown heading inside <goal> block (# → ###) to nest under condo's ## Goals heading
         lines.push('', goalBlock.replace(/^(# )(?!#)/m, '### '));
       }
     }

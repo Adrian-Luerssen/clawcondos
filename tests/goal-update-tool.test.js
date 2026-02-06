@@ -245,6 +245,49 @@ describe('goal_update tool', () => {
     expect(data.goals[0].nextTask).toBe('Write tests next');
   });
 
+  it('goalStatus:"done" validation accounts for task being marked done in same call', async () => {
+    // Mark task_1 done via direct store manipulation so only task_2 is pending
+    const data = store.load();
+    data.goals[0].tasks[0].done = true;
+    data.goals[0].tasks[0].status = 'done';
+    store.save(data);
+
+    // Mark last pending task done AND goalStatus done in same call — should succeed
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      taskId: 'task_2',
+      status: 'done',
+      summary: 'Tests written',
+      goalStatus: 'done',
+    });
+    expect(result.content[0].text).toContain('task_2');
+    expect(result.content[0].text).toContain('goal marked done');
+    expect(result.content[0].text).not.toContain('Error');
+
+    const updated = store.load().goals[0];
+    expect(updated.tasks[1].done).toBe(true);
+    expect(updated.status).toBe('done');
+    expect(updated.completed).toBe(true);
+  });
+
+  it('goalStatus:"done" early validation rejects when other tasks still pending', async () => {
+    // Both tasks still pending, try to mark task_1 done + goalStatus done
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      taskId: 'task_1',
+      status: 'done',
+      summary: 'Built',
+      goalStatus: 'done',
+    });
+    // Should reject because task_2 is still pending
+    expect(result.content[0].text).toContain('cannot mark goal done');
+    expect(result.content[0].text).toContain('1 task still pending');
+
+    // Crucially: task_1 should NOT have been mutated (early return before mutations)
+    const data = store.load();
+    expect(data.goals[0].tasks[0].done).toBe(false);
+  });
+
   it('addTasks response includes task IDs', async () => {
     const result = await execute('call1', {
       sessionKey: 'agent:main:main',
@@ -293,7 +336,7 @@ describe('goal_update tool', () => {
     expect(data.goals[0].nextTask).toBe('Build API');
   });
 
-  it('does not auto-set nextTask for done status', async () => {
+  it('clears nextTask when marking task done', async () => {
     // Set a nextTask first
     const data = store.load();
     data.goals[0].nextTask = 'something else';
@@ -306,7 +349,7 @@ describe('goal_update tool', () => {
       summary: 'Built',
     });
 
-    expect(store.load().goals[0].nextTask).toBe('something else');
+    expect(store.load().goals[0].nextTask).toBeNull();
   });
 });
 
@@ -401,6 +444,32 @@ describe('goal_update tool with goalId (condo path)', () => {
       nextTask: 'Something',
     });
     expect(result.content[0].text).toContain('does not belong');
+  });
+
+  it('condo orchestrator can set goalStatus on any goal in condo', async () => {
+    // Mark all tasks done on goal_1
+    const data = store.load();
+    data.goals[0].tasks[0].done = true;
+    data.goals[0].tasks[0].status = 'done';
+    store.save(data);
+
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:telegram:123',
+      goalId: 'goal_1',
+      goalStatus: 'done',
+    });
+    expect(result.content[0].text).toContain('goal marked done');
+    expect(store.load().goals[0].status).toBe('done');
+  });
+
+  it('condo orchestrator can set nextTask on any goal in condo', async () => {
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:telegram:123',
+      goalId: 'goal_2',
+      nextTask: 'Working on keywords',
+    });
+    expect(result.content[0].text).toContain('nextTask');
+    expect(store.load().goals[1].nextTask).toBe('Working on keywords');
   });
 
   it('falls back to sessionIndex when no goalId provided (backward compat)', async () => {
@@ -499,7 +568,7 @@ describe('goal_update cross-goal boundaries', () => {
       taskId: 'task_2',
       status: 'in-progress',
     });
-    expect(result.content[0].text).toContain('Cross-goal');
+    expect(result.content[0].text).toContain('cross-goal');
     expect(result.content[0].text).toContain('only addTasks and notes');
   });
 
@@ -514,7 +583,7 @@ describe('goal_update cross-goal boundaries', () => {
       goalId: 'goal_2',
       goalStatus: 'done',
     });
-    expect(result.content[0].text).toContain('Cross-goal');
+    expect(result.content[0].text).toContain('cross-goal');
   });
 
   it('blocks nextTask on sibling', async () => {
@@ -523,7 +592,7 @@ describe('goal_update cross-goal boundaries', () => {
       goalId: 'goal_2',
       nextTask: 'Something',
     });
-    expect(result.content[0].text).toContain('Cross-goal');
+    expect(result.content[0].text).toContain('cross-goal');
   });
 
   it('blocks operations on different condo', async () => {
