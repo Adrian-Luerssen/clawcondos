@@ -110,6 +110,51 @@ describe('Plugin index.js', () => {
       });
       expect(result).toBeUndefined();
     });
+
+    it('includes project summary when goal has condoId', async () => {
+      // Create condo and goal in it
+      let condoResult;
+      api._methods['condos.create']({
+        params: { name: 'Summary Condo' },
+        respond: (ok, payload) => { condoResult = payload; },
+      });
+      const condoId = condoResult.condo.id;
+
+      let goalResult;
+      api._methods['goals.create']({
+        params: { title: 'Condo Goal A', condoId },
+        respond: (ok, payload) => { goalResult = payload; },
+      });
+      const goalId = goalResult.goal.id;
+
+      api._methods['goals.create']({
+        params: { title: 'Condo Goal B', condoId },
+        respond: () => {},
+      });
+
+      api._methods['goals.addSession']({
+        params: { id: goalId, sessionKey: 'agent:main:summary' },
+        respond: () => {},
+      });
+
+      const result = await api._hooks['before_agent_start']({
+        context: { sessionKey: 'agent:main:summary' },
+      });
+      expect(result.prependContext).toContain('<project');
+      expect(result.prependContext).toContain('Summary Condo');
+      expect(result.prependContext).toContain('Condo Goal A');
+      expect(result.prependContext).toContain('Condo Goal B');
+      expect(result.prependContext).toContain('<goal');
+    });
+
+    it('no project summary when goal has no condoId', async () => {
+      const goalId = seedGoal();
+      const result = await api._hooks['before_agent_start']({
+        context: { sessionKey: 'agent:main:main' },
+      });
+      expect(result.prependContext).toContain('<goal');
+      expect(result.prependContext).not.toContain('<project');
+    });
   });
 
   describe('before_agent_start hook (condo path)', () => {
@@ -165,7 +210,7 @@ describe('Plugin index.js', () => {
       });
       // Should get condo context, not direct goal context
       expect(result.prependContext).toContain('Test Condo');
-      expect(result.prependContext).not.toContain('# Goal: Direct Goal');
+      expect(result.prependContext).not.toContain('# Direct Goal');
     });
   });
 

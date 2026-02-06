@@ -244,6 +244,70 @@ describe('goal_update tool', () => {
     expect(data.goals[0].tasks[0].done).toBe(true);
     expect(data.goals[0].nextTask).toBe('Write tests next');
   });
+
+  it('addTasks response includes task IDs', async () => {
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      addTasks: [{ text: 'Deploy' }, { text: 'Monitor' }],
+    });
+    const text = result.content[0].text;
+    expect(text).toContain('created 2 tasks:');
+    // Should include the generated task_ IDs
+    expect(text).toMatch(/task_\w+, task_\w+/);
+  });
+
+  it('response includes remaining task count', async () => {
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      taskId: 'task_1',
+      status: 'done',
+      summary: 'Done',
+    });
+    expect(result.content[0].text).toContain('(1 task remaining)');
+  });
+
+  it('shows "all tasks done" when last task completed', async () => {
+    // Mark first task done
+    const data = store.load();
+    data.goals[0].tasks[0].done = true;
+    data.goals[0].tasks[0].status = 'done';
+    store.save(data);
+
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      taskId: 'task_2',
+      status: 'done',
+      summary: 'Tests written',
+    });
+    expect(result.content[0].text).toContain('(all tasks done)');
+  });
+
+  it('auto-sets nextTask when marking in-progress', async () => {
+    await execute('call1', {
+      sessionKey: 'agent:main:main',
+      taskId: 'task_1',
+      status: 'in-progress',
+    });
+
+    const data = store.load();
+    expect(data.goals[0].nextTask).toBe('Build API');
+  });
+
+  it('does not auto-set nextTask for done status', async () => {
+    // Set a nextTask first
+    const data = store.load();
+    data.goals[0].nextTask = 'something else';
+    store.save(data);
+
+    await execute('call1', {
+      sessionKey: 'agent:main:main',
+      taskId: 'task_1',
+      status: 'done',
+      summary: 'Built',
+    });
+
+    expect(store.load().goals[0].nextTask).toBe('something else');
+  });
 });
 
 describe('goal_update tool with goalId (condo path)', () => {
@@ -351,5 +415,143 @@ describe('goal_update tool with goalId (condo path)', () => {
       status: 'done',
     });
     expect(result.content[0].text).toContain('updated');
+  });
+});
+
+describe('goal_update cross-goal boundaries', () => {
+  let store, execute;
+
+  beforeEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = createGoalsStore(TEST_DIR);
+    execute = createGoalUpdateExecutor(store);
+
+    // Session owns goal_1, goals 1 & 2 in same condo, goal_3 in different condo, goal_4 is done
+    const data = store.load();
+    data.condos.push(
+      { id: 'condo_1', name: 'Project A', description: '', color: null, createdAtMs: Date.now(), updatedAtMs: Date.now() },
+      { id: 'condo_2', name: 'Project B', description: '', color: null, createdAtMs: Date.now(), updatedAtMs: Date.now() },
+    );
+    data.goals.push(
+      {
+        id: 'goal_1', title: 'Own Goal', status: 'active', completed: false,
+        sessions: ['agent:main:main'], tasks: [
+          { id: 'task_1', text: 'My task', done: false },
+        ],
+        condoId: 'condo_1', priority: null, deadline: null, description: '', notes: '',
+        createdAtMs: Date.now(), updatedAtMs: Date.now(),
+      },
+      {
+        id: 'goal_2', title: 'Sibling Goal', status: 'active', completed: false,
+        sessions: [], tasks: [
+          { id: 'task_2', text: 'Sibling task', done: false },
+        ],
+        condoId: 'condo_1', priority: null, deadline: null, description: '', notes: '',
+        createdAtMs: Date.now(), updatedAtMs: Date.now(),
+      },
+      {
+        id: 'goal_3', title: 'Other Condo Goal', status: 'active', completed: false,
+        sessions: [], tasks: [],
+        condoId: 'condo_2', priority: null, deadline: null, description: '', notes: '',
+        createdAtMs: Date.now(), updatedAtMs: Date.now(),
+      },
+      {
+        id: 'goal_4', title: 'Done Sibling', status: 'done', completed: true,
+        sessions: [], tasks: [{ id: 'task_4', text: 'Done task', done: true }],
+        condoId: 'condo_1', priority: null, deadline: null, description: '', notes: '',
+        createdAtMs: Date.now(), updatedAtMs: Date.now(),
+      },
+    );
+    data.sessionIndex['agent:main:main'] = { goalId: 'goal_1' };
+    store.save(data);
+  });
+
+  afterEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('allows addTasks on sibling in same condo', async () => {
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      goalId: 'goal_2',
+      addTasks: [{ text: 'New sibling task' }],
+    });
+    expect(result.content[0].text).toContain('created 1 task');
+    const data = store.load();
+    expect(data.goals[1].tasks).toHaveLength(2);
+  });
+
+  it('allows notes on sibling in same condo', async () => {
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      goalId: 'goal_2',
+      notes: 'Cross-goal note',
+    });
+    expect(result.content[0].text).toContain('notes updated');
+    expect(store.load().goals[1].notes).toBe('Cross-goal note');
+  });
+
+  it('blocks task status update on sibling', async () => {
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      goalId: 'goal_2',
+      taskId: 'task_2',
+      status: 'in-progress',
+    });
+    expect(result.content[0].text).toContain('Cross-goal');
+    expect(result.content[0].text).toContain('only addTasks and notes');
+  });
+
+  it('blocks goalStatus on sibling', async () => {
+    // Mark all sibling tasks done first
+    const data = store.load();
+    data.goals[1].tasks[0].done = true;
+    store.save(data);
+
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      goalId: 'goal_2',
+      goalStatus: 'done',
+    });
+    expect(result.content[0].text).toContain('Cross-goal');
+  });
+
+  it('blocks nextTask on sibling', async () => {
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      goalId: 'goal_2',
+      nextTask: 'Something',
+    });
+    expect(result.content[0].text).toContain('Cross-goal');
+  });
+
+  it('blocks operations on different condo', async () => {
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      goalId: 'goal_3',
+      addTasks: [{ text: 'Sneak in' }],
+    });
+    expect(result.content[0].text).toContain('same project');
+  });
+
+  it('blocks operations on completed sibling goal', async () => {
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      goalId: 'goal_4',
+      notes: 'Trying to modify done goal',
+    });
+    expect(result.content[0].text).toContain('completed goal');
+  });
+
+  it('allows all operations on own goal', async () => {
+    const result = await execute('call1', {
+      sessionKey: 'agent:main:main',
+      goalId: 'goal_1',
+      taskId: 'task_1',
+      status: 'in-progress',
+    });
+    expect(result.content[0].text).toContain('updated');
+    expect(result.content[0].text).not.toContain('Error');
   });
 });

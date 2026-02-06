@@ -1,4 +1,4 @@
-import { buildGoalContext } from './context-builder.js';
+import { buildGoalContext, buildProjectSummary } from './context-builder.js';
 
 export function createTaskSpawnHandler(store) {
   return function handler({ params, respond }) {
@@ -34,8 +34,17 @@ export function createTaskSpawnHandler(store) {
 
       // Build task-specific context
       const goalContext = buildGoalContext(goal, { currentSessionKey: sessionKey });
+      let projectPrefix = '';
+      if (goal.condoId) {
+        const condo = data.condos.find(c => c.id === goal.condoId);
+        if (condo) {
+          const siblingGoals = data.goals.filter(g => g.condoId === goal.condoId);
+          const ps = buildProjectSummary(condo, siblingGoals, goal.id);
+          if (ps) projectPrefix = ps + '\n\n';
+        }
+      }
       const taskContext = [
-        goalContext,
+        projectPrefix + goalContext,
         '',
         '---',
         `## Your Assignment: ${task.text}`,

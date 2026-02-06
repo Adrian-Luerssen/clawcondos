@@ -3,29 +3,30 @@ export function buildGoalContext(goal, opts = {}) {
   const { currentSessionKey } = opts;
 
   const lines = [
-    `# Goal: ${goal.title}`,
+    `<goal id="${goal.id}" status="${goal.status || 'active'}">`,
+    `# ${goal.title}`,
   ];
+
+  // Compact meta line: P0 · Deadline: 2026-02-15
+  const meta = [];
+  if (goal.priority) meta.push(goal.priority);
+  if (goal.deadline) meta.push(`Deadline: ${goal.deadline}`);
+  if (meta.length) lines.push(meta.join(' · '));
 
   if (goal.description) lines.push('', goal.description);
 
-  const meta = [];
-  if (goal.status) meta.push(`Status: ${goal.status}`);
-  if (goal.priority) meta.push(`Priority: ${goal.priority}`);
-  if (goal.deadline) meta.push(`Deadline: ${goal.deadline}`);
-  if (goal.sessions?.length) meta.push(`Sessions: ${goal.sessions.length}`);
-  if (meta.length) lines.push('', meta.join(' | '));
-
   if (goal.tasks?.length) {
-    lines.push('', '## Tasks');
+    const doneCount = goal.tasks.filter(t => t.done).length;
+    lines.push('', `Tasks (${doneCount}/${goal.tasks.length} done):`);
     for (const t of goal.tasks) {
       const marker = t.done ? 'x' : ' ';
       let suffix = '';
       if (currentSessionKey && t.sessionKey === currentSessionKey) {
-        suffix = ' (you)';
+        suffix = ' ← you';
       } else if (t.sessionKey) {
-        suffix = ` (assigned: ${t.sessionKey})`;
+        suffix = ` (agent: ${t.sessionKey})`;
       } else if (!t.done) {
-        suffix = ' (unassigned)';
+        suffix = ' — unassigned';
       }
       lines.push(`- [${marker}] ${t.text} [${t.id}]${suffix}`);
       if (t.done && t.summary) {
@@ -34,14 +35,40 @@ export function buildGoalContext(goal, opts = {}) {
     }
   }
 
-  const hasPendingTasks = (goal.tasks || []).some(t => !t.done);
-  if (hasPendingTasks) {
-    lines.push('');
-    lines.push('> Use the `goal_update` tool to report progress. Pass the task ID (shown in brackets) and status. Example: goal_update({ taskId: "task_abc", status: "done", summary: "Built the API" })');
-  } else if (goal.tasks?.length) {
-    lines.push('');
-    lines.push('> All tasks are complete. If the goal is finished, call goal_update({ goalStatus: "done" }).');
+  lines.push('</goal>');
+
+  return lines.join('\n');
+}
+
+export function buildProjectSummary(condo, goals, currentGoalId) {
+  if (!condo || !Array.isArray(goals) || goals.length === 0) return null;
+
+  const cap = 15;
+  const shown = goals.slice(0, cap);
+  const remaining = goals.length - cap;
+
+  const lines = [
+    `<project name="${condo.name}" id="${condo.id}" goals="${goals.length}">`,
+  ];
+
+  for (let i = 0; i < shown.length; i++) {
+    const g = shown[i];
+    const status = g.status || 'pending';
+    let suffix = '';
+    if (g.id === currentGoalId) {
+      suffix = ' ← this goal';
+    } else if (status === 'active' && g.tasks?.length) {
+      const done = g.tasks.filter(t => t.done).length;
+      suffix = ` — ${done}/${g.tasks.length} tasks`;
+    }
+    lines.push(`${i + 1}. [${status}] ${g.title} (${g.id})${suffix}`);
   }
+
+  if (remaining > 0) {
+    lines.push(`... and ${remaining} more`);
+  }
+
+  lines.push('</project>');
 
   return lines.join('\n');
 }
@@ -62,7 +89,7 @@ export function buildCondoContext(condo, goals, opts = {}) {
       const goalBlock = buildGoalContext(goal, { currentSessionKey });
       if (goalBlock) {
         // Indent goal context under condo (replace top-level # with ###)
-        lines.push('', goalBlock.replace(/^# Goal:/m, '### Goal:'));
+        lines.push('', goalBlock.replace(/^(# )(?!#)/m, '### '));
       }
     }
   }

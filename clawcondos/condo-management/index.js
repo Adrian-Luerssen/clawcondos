@@ -3,7 +3,7 @@ import { fileURLToPath } from 'url';
 import { createGoalsStore } from './lib/goals-store.js';
 import { createGoalHandlers } from './lib/goals-handlers.js';
 import { createCondoHandlers } from './lib/condos-handlers.js';
-import { buildGoalContext, buildCondoContext } from './lib/context-builder.js';
+import { buildGoalContext, buildCondoContext, buildProjectSummary } from './lib/context-builder.js';
 import { createGoalUpdateExecutor } from './lib/goal-update-tool.js';
 import { createTaskSpawnHandler } from './lib/task-spawn.js';
 import {
@@ -47,14 +47,22 @@ export default function register(api) {
       }
     }
 
-    // 2. Check sessionIndex (single-goal path, unchanged)
+    // 2. Check sessionIndex (single-goal path)
     const entry = data.sessionIndex[sessionKey];
     if (!entry) return;
     const goal = data.goals.find(g => g.id === entry.goalId);
     if (!goal) return;
+    let projectSummary = '';
+    if (goal.condoId) {
+      const condo = data.condos.find(c => c.id === goal.condoId);
+      if (condo) {
+        const siblingGoals = data.goals.filter(g => g.condoId === goal.condoId);
+        projectSummary = buildProjectSummary(condo, siblingGoals, goal.id);
+      }
+    }
     const context = buildGoalContext(goal, { currentSessionKey: sessionKey });
     if (!context) return;
-    return { prependContext: context };
+    return { prependContext: projectSummary ? `${projectSummary}\n\n${context}` : context };
   });
 
   // Hook: track session activity on goals and condos

@@ -145,4 +145,44 @@ describe('goals.spawnTaskSession', () => {
     });
     expect(getResult().ok).toBe(false);
   });
+
+  it('includes project summary in taskContext when goal has condoId', () => {
+    // Update goal to have a condoId and add a condo + sibling goal
+    const data = store.load();
+    data.goals[0].condoId = 'condo_1';
+    data.condos = [{ id: 'condo_1', name: 'Test Project', description: '' }];
+    data.goals.push({
+      id: 'goal_2', title: 'Sibling Goal', description: '',
+      status: 'active', completed: false, condoId: 'condo_1',
+      priority: null, deadline: null,
+      tasks: [{ id: 'task_s1', text: 'Sibling task', status: 'pending', done: false, sessionKey: null }],
+      sessions: [], notes: '',
+      createdAtMs: Date.now(), updatedAtMs: Date.now(),
+    });
+    store.save(data);
+
+    const { respond, getResult } = makeResponder();
+    handler({
+      params: { goalId: 'goal_1', taskId: 'task_1', agentId: 'main' },
+      respond,
+    });
+    const r = getResult();
+    expect(r.ok).toBe(true);
+    expect(r.payload.taskContext).toContain('<project');
+    expect(r.payload.taskContext).toContain('Test Project');
+    expect(r.payload.taskContext).toContain('Sibling Goal');
+    expect(r.payload.taskContext).toContain('<goal');
+  });
+
+  it('no project summary when goal has no condoId', () => {
+    const { respond, getResult } = makeResponder();
+    handler({
+      params: { goalId: 'goal_1', taskId: 'task_1', agentId: 'main' },
+      respond,
+    });
+    const r = getResult();
+    expect(r.ok).toBe(true);
+    expect(r.payload.taskContext).not.toContain('<project');
+    expect(r.payload.taskContext).toContain('<goal');
+  });
 });

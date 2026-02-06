@@ -2598,42 +2598,19 @@ function initAutoArchiveUI() {
       const timestamp = Date.now();
       const sessionKey = `agent:${agentId}:webchat:${timestamp}`;
 
-      // Build kickoff payload (single message, includes current goal state).
-      const tasks = Array.isArray(goal.tasks) ? goal.tasks : [];
-      const tasksText = tasks.length
-        ? tasks.map(t => `- [${t.done ? 'x' : ' '}] ${t.text || ''} [${t.id}]`.trim()).join('\n')
-        : '(no tasks yet)';
-      const def = (goal.notes || goal.description || '').trim() || '(no definition yet)';
-
-      const hasTasks = tasks.length > 0;
+      // Build kickoff payload (short — agent gets state from hook context every turn).
+      const hasTasks = Array.isArray(goal.tasks) && goal.tasks.length > 0;
+      const hasCondo = !!goal.condoId;
       const kickoff = [
-        `You are working on this goal in ClawCondos.`,
+        `Execute this goal autonomously.`,
+        hasCondo ? `The project summary above is context only — focus on this goal's tasks.` : '',
         ``,
-        `GOAL: ${goal.title || goalId}`,
-        `STATUS: ${goal.status || 'active'}${goal.priority ? ` · PRIORITY: ${goal.priority}` : ''}`,
+        hasTasks
+          ? `Workflow: pick a pending task, mark in-progress, do the work, mark done with a summary, then next task. When all tasks are done, set goalStatus: "done". If blocked, mark the task "blocked" and explain.`
+          : `First, break this into 2-5 concrete tasks using goal_update({ addTasks: [...] }). Then execute each: mark in-progress, do the work, mark done. When all tasks are done, set goalStatus: "done".`,
         ``,
-        `DEFINITION:`,
-        def,
-        ``,
-        `TASKS:`,
-        tasksText,
-        ``,
-        `INSTRUCTIONS:`,
-        `You have a goal_update tool. Use it to track your progress.`,
-        ...(hasTasks
-          ? [
-            `1) Pick the best first task to start and call goal_update({ nextTask: "..." }) to signal what you're doing.`,
-          ]
-          : [
-            `1) Break the goal into 2-5 concrete tasks using goal_update({ addTasks: [{text: "..."}, ...], nextTask: "..." }).`,
-          ]
-        ),
-        `2) Work autonomously. Use your tools (bash, file editing, search, etc.) to complete each task.`,
-        `3) After completing a task, call goal_update({ taskId: "...", status: "done", summary: "..." }).`,
-        `4) If you need user input, call goal_update({ taskId: "...", status: "blocked", summary: "what you need" }) and explain in chat what you're waiting for.`,
-        `5) When all tasks are done, call goal_update({ goalStatus: "done" }).`,
-        `6) Start executing now.`,
-      ].join('\n');
+        `Begin.`,
+      ].filter(Boolean).join('\n');
 
       try {
         // Attach session to goal first so it shows up immediately.

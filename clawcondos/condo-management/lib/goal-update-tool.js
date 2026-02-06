@@ -1,4 +1,6 @@
 export function createGoalUpdateExecutor(store) {
+  const error = (text) => ({ content: [{ type: 'text', text: `Error: ${text}` }] });
+
   return async function execute(toolCallId, params) {
     const { sessionKey, goalId, taskId, status, summary, addTasks, nextTask, goalStatus, notes } = params;
 
@@ -9,7 +11,7 @@ export function createGoalUpdateExecutor(store) {
     const hasGoalStatus = typeof goalStatus === 'string';
     const hasNotes = typeof notes === 'string' && notes.trim();
     if (!hasTaskUpdate && !hasAddTasks && !hasNextTask && !hasGoalStatus && !hasNotes) {
-      return { content: [{ type: 'text', text: 'Error: provide at least one of: taskId+status, addTasks, nextTask, goalStatus, notes.' }] };
+      return error('provide at least one of: taskId+status, addTasks, nextTask, goalStatus, notes.');
     }
 
     const data = store.load();
@@ -19,21 +21,37 @@ export function createGoalUpdateExecutor(store) {
     if (goalId) {
       goal = data.goals.find(g => g.id === goalId);
       if (!goal) {
-        return { content: [{ type: 'text', text: `Error: goal ${goalId} not found.` }] };
+        return error(`goal ${goalId} not found.`);
       }
       // If called from a condo-bound session, verify the goal belongs to the condo
       const condoId = data.sessionCondoIndex[sessionKey];
       if (condoId && goal.condoId !== condoId) {
-        return { content: [{ type: 'text', text: `Error: goal ${goalId} does not belong to the bound condo.` }] };
+        return error(`goal ${goalId} does not belong to the bound condo.`);
       }
     } else {
       const entry = data.sessionIndex[sessionKey];
       if (!entry) {
-        return { content: [{ type: 'text', text: 'Error: session not assigned to any goal.' }] };
+        return error('session not assigned to any goal.');
       }
       goal = data.goals.find(g => g.id === entry.goalId);
       if (!goal) {
-        return { content: [{ type: 'text', text: 'Error: goal not found.' }] };
+        return error('goal not found.');
+      }
+    }
+
+    // Cross-goal boundary checks
+    const ownEntry = data.sessionIndex[sessionKey];
+    if (ownEntry && ownEntry.goalId && ownEntry.goalId !== goal.id) {
+      // Cross-goal operation
+      const ownGoal = data.goals.find(g => g.id === ownEntry.goalId);
+      if (!ownGoal?.condoId || ownGoal.condoId !== goal.condoId) {
+        return error('Can only contribute to goals in the same project.');
+      }
+      if (goal.status === 'done' || goal.completed) {
+        return error('Cannot modify a completed goal.');
+      }
+      if (hasTaskUpdate || hasGoalStatus || hasNextTask) {
+        return error('Cross-goal: only addTasks and notes allowed on sibling goals.');
       }
     }
 
@@ -43,13 +61,17 @@ export function createGoalUpdateExecutor(store) {
     if (hasTaskUpdate) {
       const task = (goal.tasks || []).find(t => t.id === taskId);
       if (!task) {
-        return { content: [{ type: 'text', text: `Error: task ${taskId} not found in goal.` }] };
+        return error(`task ${taskId} not found in goal.`);
       }
       task.done = status === 'done';
       task.status = status;
       if (summary) task.summary = summary;
       task.updatedAtMs = Date.now();
       results.push(`task ${taskId} → ${status}`);
+
+      if (status === 'in-progress') {
+        goal.nextTask = task.text;
+      }
     }
 
     // ── Create tasks ──
@@ -77,7 +99,7 @@ export function createGoalUpdateExecutor(store) {
         created.push(task.id);
       }
       if (created.length) {
-        results.push(`created ${created.length} task${created.length > 1 ? 's' : ''}`);
+        results.push(`created ${created.length} task${created.length > 1 ? 's' : ''}: ${created.join(', ')}`);
       }
     }
 
@@ -92,7 +114,7 @@ export function createGoalUpdateExecutor(store) {
       if (goalStatus === 'done') {
         const pending = (goal.tasks || []).filter(t => !t.done);
         if (pending.length > 0) {
-          return { content: [{ type: 'text', text: `Error: cannot mark goal done — ${pending.length} task${pending.length > 1 ? 's' : ''} still pending.` }] };
+          return error(`cannot mark goal done — ${pending.length} task${pending.length > 1 ? 's' : ''} still pending.`);
         }
         goal.status = 'done';
         goal.completed = true;
@@ -114,8 +136,13 @@ export function createGoalUpdateExecutor(store) {
     goal.updatedAtMs = Date.now();
     store.save(data);
 
+    const remaining = (goal.tasks || []).filter(t => !t.done).length;
+    const countSuffix = remaining > 0
+      ? ` (${remaining} task${remaining !== 1 ? 's' : ''} remaining)`
+      : ' (all tasks done)';
+
     return {
-      content: [{ type: 'text', text: `Goal "${goal.title}" updated: ${results.join(', ')}.` }],
+      content: [{ type: 'text', text: `Goal "${goal.title}" updated: ${results.join(', ')}.${countSuffix}` }],
     };
   };
 }
