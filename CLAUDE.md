@@ -89,14 +89,22 @@ The frontend uses a single global `state` object. WebSocket events drive UI upda
 Goals, tasks, and session-goal mappings are managed by an OpenClaw plugin at `openclaw-plugin/`. The plugin registers gateway RPC methods that the frontend calls over WebSocket.
 
 **Plugin files:**
-- `openclaw-plugin/index.js` - Plugin entry point, registers gateway methods + hooks + tools
-- `openclaw-plugin/lib/goals-store.js` - File-backed JSON storage for goals
-- `openclaw-plugin/lib/goals-handlers.js` - Gateway method handlers for goals CRUD
+- `openclaw-plugin/index.js` - Plugin entry point, registers 20 gateway methods + 2 hooks + 1 tool
+- `openclaw-plugin/lib/goals-store.js` - File-backed JSON storage for goals and condos
+- `openclaw-plugin/lib/goals-handlers.js` - Gateway method handlers for goals CRUD, tasks, and sessions
+- `openclaw-plugin/lib/condos-handlers.js` - Gateway method handlers for condos CRUD
 - `openclaw-plugin/lib/context-builder.js` - Builds goal context for agent prompt injection
 - `openclaw-plugin/lib/goal-update-tool.js` - Agent tool for reporting task status
+- `openclaw-plugin/lib/task-spawn.js` - Spawns subagent sessions for task execution
 - `openclaw-plugin/migrate.js` - Migration script from `.registry/goals.json`
 
-**Gateway methods:** `goals.list`, `goals.create`, `goals.get`, `goals.update`, `goals.delete`, `goals.addSession`, `goals.removeSession`, `goals.sessionLookup`, `goals.setSessionCondo`, `goals.getSessionCondo`, `goals.listSessionCondos`
+**Gateway methods (20):**
+- Goals: `goals.list`, `goals.create`, `goals.get`, `goals.update`, `goals.delete`
+- Sessions: `goals.addSession`, `goals.removeSession`, `goals.sessionLookup`
+- Session-condo mapping: `goals.setSessionCondo`, `goals.getSessionCondo`, `goals.listSessionCondos`
+- Tasks: `goals.addTask`, `goals.updateTask`, `goals.deleteTask`
+- Condos: `condos.create`, `condos.list`, `condos.get`, `condos.update`, `condos.delete`
+- Spawning: `goals.spawnTaskSession`
 
 **Plugin hooks:**
 - `before_agent_start` - Injects goal/task context when a session belongs to a goal

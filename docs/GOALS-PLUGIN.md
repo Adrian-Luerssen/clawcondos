@@ -184,16 +184,17 @@ All handlers follow consistent validation:
 
 ## Testing
 
-127 tests across 9 test files. Run with `npm test`.
+181 tests across 10 test files. Run with `npm test`.
 
 | Test File | Coverage |
 |-----------|----------|
 | `goals-handlers.test.js` | Goals CRUD, session management, task CRUD, validation |
-| `condos-handlers.test.js` | Condos CRUD, goalCount enrichment, cascade delete |
-| `goal-update-tool.test.js` | Status sync (done/in-progress/blocked), error cases |
+| `condos-handlers.test.js` | Condos CRUD, goalCount enrichment, cascade delete, sessionCondoIndex cleanup |
+| `goal-update-tool.test.js` | Status sync (done/in-progress/blocked), goal-level update, error cases |
 | `task-spawn.test.js` | Spawn config, session linking, validation, re-spawn guard |
 | `context-builder.test.js` | Context generation, session awareness, auto-completion prompt, null safety |
-| `goals-store.test.js` | Load/save, atomic writes, v2 migration, ID generation |
+| `goals-store.test.js` | Load/save, atomic writes, v2 migration, ID generation, condos array |
+| `plugin-index.test.js` | Plugin registration, hook integration, tool factory |
 | `config.test.js` | Config loader (not plugin-specific) |
 | `message-shaping.test.js` | Message formatting (not plugin-specific) |
 | `serve-helpers.test.js` | Server helpers (not plugin-specific) |
