@@ -2593,6 +2593,7 @@ function initAutoArchiveUI() {
         : '(no tasks yet)';
       const def = (goal.notes || goal.description || '').trim() || '(no definition yet)';
 
+      const hasTasks = tasks.length > 0;
       const kickoff = [
         `You are working on this goal in ClawCondos.`,
         ``,
@@ -2606,9 +2607,12 @@ function initAutoArchiveUI() {
         tasksText,
         ``,
         `INSTRUCTIONS:`,
-        `1) Pick the best first task to start now (you choose).`,
+        ...(hasTasks
+          ? [`1) Pick the best first task to start now (you choose).`]
+          : [`1) Break the goal into 2-5 concrete tasks and include them in your first goalPatch as a "tasks" array. Each task: {"id":"task_<short>","text":"…","done":false,"stage":"backlog"}.`]
+        ),
         `2) Start executing immediately.`,
-        `3) FIRST REPLY: output a single-line JSON object of the form {"goalPatch": {...}} updating at least nextTask (and status if needed).`,
+        `3) FIRST REPLY: output a single-line JSON object of the form {"goalPatch": {...}} updating at least nextTask (and status if needed)${hasTasks ? '' : ', and include the tasks array'}.`,
         `   - Do NOT wrap it in markdown fences.`,
         `   - Keep it compact (no commentary before/after).`,
         `4) Do NOT use tools unless the user explicitly asks.`,
@@ -3228,7 +3232,7 @@ function initAutoArchiveUI() {
             return `
               <div class="goal-task-row ${doneClass}" onclick="toggleGoalTask('${id}')">
                 <input type="checkbox" ${checked} onclick="event.stopPropagation(); toggleGoalTask('${id}')">
-                <div class="goal-badge ${escapeHtml(badge)}"></div>
+                <div class="goal-badge ${escapeHtml(badge)}" onclick="event.stopPropagation(); cycleTaskStage('${id}')" title="Stage: ${escapeHtml(badge)} (click to cycle)"></div>
                 <div class="goal-rtitle">${escapeHtml(title)}</div>
                 <div class="goal-rmeta">
                   <button class="goal-task-delete" onclick="event.stopPropagation(); deleteGoalTask('${id}')" title="Delete task">✕</button>
@@ -3448,6 +3452,21 @@ function initAutoArchiveUI() {
       tasks[idx].done = !tasks[idx].done;
       tasks[idx].stage = tasks[idx].done ? 'done' : 'backlog';
       tasks[idx].status = tasks[idx].done ? 'done' : 'pending';
+      await updateGoal(goal.id, { tasks });
+    }
+
+    const STAGE_CYCLE = ['backlog', 'doing', 'review', 'done'];
+    async function cycleTaskStage(taskId) {
+      const goal = state.goals.find(g => g.id === state.currentGoalOpenId);
+      if (!goal) return;
+      const tasks = Array.isArray(goal.tasks) ? goal.tasks.map(t => ({...t})) : [];
+      const idx = tasks.findIndex(t => String(t.id) === String(taskId));
+      if (idx === -1) return;
+      const cur = tasks[idx].stage || (tasks[idx].done ? 'done' : 'backlog');
+      const next = STAGE_CYCLE[(STAGE_CYCLE.indexOf(cur) + 1) % STAGE_CYCLE.length];
+      tasks[idx].stage = next;
+      tasks[idx].done = next === 'done';
+      tasks[idx].status = next === 'done' ? 'done' : (next === 'doing' ? 'in-progress' : 'pending');
       await updateGoal(goal.id, { tasks });
     }
 
@@ -4425,11 +4444,11 @@ Response format:
 
     async function refresh() {
       if (!state.connected) return;
-      
+
       // Clean up stale runs periodically (in case we missed 'done' events)
       cleanStaleRuns();
-      
-      await loadSessions();
+
+      await Promise.all([loadSessions(), loadGoals()]);
       updateOverview();
     }
     
