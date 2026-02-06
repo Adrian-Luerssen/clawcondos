@@ -922,6 +922,21 @@ function initAutoArchiveUI() {
       }, durationMs);
     }
     
+    /** Copy text to clipboard with execCommand fallback for HTTP contexts. */
+    async function copyToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try { await navigator.clipboard.writeText(text); return; } catch {}
+      }
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // WEBSOCKET CONNECTION
     // ═══════════════════════════════════════════════════════════════
@@ -1972,27 +1987,14 @@ function initAutoArchiveUI() {
 
     async function copyConnectionDetailsToClipboard() {
       const text = buildConnectionDiagnosticsText();
-      const err = document.getElementById('connectionDetailsError');
       try {
-        await navigator.clipboard.writeText(text);
+        await copyToClipboard(text);
         showToast('Copied connection details', 'success');
       } catch (e) {
-        // Fallback for older browsers / permissions
-        try {
-          const ta = document.createElement('textarea');
-          ta.value = text;
-          ta.style.position = 'fixed';
-          ta.style.left = '-9999px';
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          ta.remove();
-          showToast('Copied connection details', 'success');
-        } catch (e2) {
-          if (err) {
-            err.textContent = 'Clipboard copy failed. You can manually select the text and copy.';
-            err.style.display = 'block';
-          }
+        const err = document.getElementById('connectionDetailsError');
+        if (err) {
+          err.textContent = 'Clipboard copy failed. You can manually select the text and copy.';
+          err.style.display = 'block';
         }
       }
     }
@@ -2534,6 +2536,7 @@ function initAutoArchiveUI() {
         state.goalFileContent = null;
         state.goalFileSearch = '';
         state.goalFileTreeExpanded = {};
+        state.goalFilesSubView = 'goal';
       }
       state.currentGoalOpenId = goalId;
       state.currentGoalId = goalId;
@@ -3323,9 +3326,99 @@ function initAutoArchiveUI() {
       }
     }
 
+    // NOTE: innerHTML usage throughout this file is the established pattern for this
+    // vanilla-JS dashboard. All user-generated content is escaped via escapeHtml().
     function renderGoalFilesPane() {
       const pane = document.getElementById('goalPane');
       if (!pane) return;
+
+      const goal = state.goals.find(g => g.id === state.currentGoalOpenId);
+      if (!goal) return;
+
+      const subView = state.goalFilesSubView || 'goal';
+
+      // Toggle bar
+      let html = '<div class="goal-files-toggle">' +
+        '<button class="goal-files-toggle-btn' + (subView === 'goal' ? ' active' : '') + '" onclick="setGoalFilesSubView(\'goal\')">Goal Files</button>' +
+        '<button class="goal-files-toggle-btn' + (subView === 'workspace' ? ' active' : '') + '" onclick="setGoalFilesSubView(\'workspace\')">Browse Workspace</button>' +
+      '</div>';
+
+      if (subView === 'goal') {
+        html += renderGoalTrackedFiles(goal);
+        pane.innerHTML = html;
+        return;
+      }
+
+      // Workspace sub-view (existing logic)
+      pane.innerHTML = html + '<div id="goalWorkspaceBrowserMount"></div>';
+      renderGoalWorkspaceBrowser();
+    }
+
+    function renderGoalTrackedFiles(goal) {
+      const files = Array.isArray(goal.files) ? goal.files : [];
+
+      if (!files.length) {
+        return '<div class="goal-tracked-empty">' +
+          '<div style="color: var(--text-muted); font-size: 13px; padding: 12px 0;">No files tracked yet. Agents report files via goal_update, or add them manually below.</div>' +
+        '</div>' +
+        '<div class="goal-file-add-row">' +
+          '<input class="goal-file-add-input form-input" id="goalFileAddInput" placeholder="path/to/file" onkeypress="if(event.key===\'Enter\')addGoalFileManual()">' +
+          '<button class="ghost-btn" onclick="addGoalFileManual()">Add</button>' +
+        '</div>';
+      }
+
+      // Group by taskId
+      const tasks = Array.isArray(goal.tasks) ? goal.tasks : [];
+      const taskMap = new Map(tasks.map(t => [t.id, t]));
+      const groups = new Map();  // taskId|null -> files[]
+      for (const f of files) {
+        const key = f.taskId || '__none__';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(f);
+      }
+
+      let html = '';
+
+      // Render groups (task-grouped first, then ungrouped)
+      for (const [key, groupFiles] of groups) {
+        const task = key !== '__none__' ? taskMap.get(key) : null;
+        const label = task ? escapeHtml(task.text || key) : (key === '__none__' ? 'General' : escapeHtml(key));
+        html += '<div class="goal-tracked-group">';
+        html += '<div class="goal-tracked-group-label">' + label + '</div>';
+        for (const f of groupFiles) {
+          const name = f.path.split('/').pop();
+          const ext = (name.match(/\.(\w+)$/)?.[1] || '').toLowerCase();
+          const icon = { md: '\uD83D\uDCDD', json: '\uD83D\uDCCB', py: '\uD83D\uDC0D', js: '\uD83D\uDCDC', mjs: '\uD83D\uDCDC', sh: '\u2699\uFE0F', css: '\uD83C\uDFA8', html: '\uD83C\uDF10', ts: '\uD83D\uDCDC', tsx: '\uD83D\uDCDC', jsx: '\uD83D\uDCDC' }[ext] || '\uD83D\uDCC4';
+          const sourceIcon = f.source === 'agent' ? '\uD83E\uDD16' : '\u270B';
+          const ago = f.addedAtMs ? timeAgo(f.addedAtMs) : '';
+          const escapedPath = escapeHtml(f.path.replace(/'/g, "\\'"));
+          const escapedGoalId = escapeHtml((goal.id || '').replace(/'/g, "\\'"));
+          html += '<div class="goal-tracked-file">' +
+            '<span class="goal-tracked-file-icon">' + icon + '</span>' +
+            '<div class="goal-tracked-file-info">' +
+              '<span class="goal-tracked-file-name">' + escapeHtml(name) + '</span>' +
+              '<span class="goal-tracked-file-path">' + escapeHtml(f.path) + '</span>' +
+            '</div>' +
+            '<span class="goal-tracked-file-source" title="' + escapeHtml(f.source || 'unknown') + '">' + sourceIcon + '</span>' +
+            (ago ? '<span class="goal-tracked-file-time">' + escapeHtml(ago) + '</span>' : '') +
+            '<button class="goal-tracked-file-remove" onclick="event.stopPropagation(); removeGoalFile(\'' + escapedGoalId + '\',\'' + escapedPath + '\')" title="Remove">\u2715</button>' +
+          '</div>';
+        }
+        html += '</div>';
+      }
+
+      // Manual add input
+      html += '<div class="goal-file-add-row">' +
+        '<input class="goal-file-add-input form-input" id="goalFileAddInput" placeholder="path/to/file" onkeypress="if(event.key===\'Enter\')addGoalFileManual()">' +
+        '<button class="ghost-btn" onclick="addGoalFileManual()">Add</button>' +
+      '</div>';
+
+      return html;
+    }
+
+    function renderGoalWorkspaceBrowser() {
+      const mount = document.getElementById('goalWorkspaceBrowserMount');
+      if (!mount) return;
 
       const goal = state.goals.find(g => g.id === state.currentGoalOpenId);
       if (!goal) return;
@@ -3337,7 +3430,7 @@ function initAutoArchiveUI() {
       }
 
       if (state.goalFileLoading) {
-        pane.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; padding: 8px 0;">Loading files\u2026</div>';
+        mount.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; padding: 8px 0;">Loading files\u2026</div>';
         return;
       }
 
@@ -3350,13 +3443,13 @@ function initAutoArchiveUI() {
         const msg = sessions.length
           ? 'No browsable files in the workspace.'
           : 'No sessions attached to this goal yet.';
-        pane.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; padding: 8px 0;">' + escapeHtml(msg) + '</div>';
+        mount.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; padding: 8px 0;">' + escapeHtml(msg) + '</div>';
         return;
       }
 
       // If a file is selected, show inline viewer
       if (state.selectedGoalFile) {
-        renderGoalFileViewerInline(pane);
+        renderGoalFileViewerInline(mount);
         return;
       }
 
@@ -3401,7 +3494,39 @@ function initAutoArchiveUI() {
         }
       }
 
-      pane.innerHTML = html;
+      mount.innerHTML = html;
+    }
+
+    function setGoalFilesSubView(view) {
+      state.goalFilesSubView = view;
+      renderGoalPane();
+    }
+
+    async function addGoalFileManual() {
+      const goal = state.goals.find(g => g.id === state.currentGoalOpenId);
+      if (!goal) return;
+      const input = document.getElementById('goalFileAddInput');
+      if (!input) return;
+      const path = (input.value || '').trim();
+      if (!path) return;
+      input.value = '';
+      try {
+        await rpcCall('goals.addFiles', { goalId: goal.id, files: [path] });
+        await loadGoals();
+        renderGoalPane();
+      } catch (e) {
+        console.warn('addGoalFileManual failed', e?.message || e);
+      }
+    }
+
+    async function removeGoalFile(goalId, path) {
+      try {
+        await rpcCall('goals.removeFile', { goalId, path });
+        await loadGoals();
+        renderGoalPane();
+      } catch (e) {
+        console.warn('removeGoalFile failed', e?.message || e);
+      }
     }
 
     function sortGoalFileTreeItems(items) {
@@ -5445,7 +5570,7 @@ Response format:
       menu.id = 'agentFileCtxMenu';
 
       const items = [];
-      items.push({ label: 'Copy path', action: function() { navigator.clipboard.writeText(path); } });
+      items.push({ label: 'Copy path', action: function() { copyToClipboard(path); } });
       if (type === 'file') {
         items.push({ label: 'Open file', action: function() { selectAgentFile(path); } });
       }
@@ -8525,85 +8650,151 @@ Response format:
     // ═══════════════════════════════════════════════════════════════
     // EXPORT
     // ═══════════════════════════════════════════════════════════════
-    async function exportChatAsMarkdown() {
-      if (!state.currentSession) return;
-      
-      try {
-        // Fetch fresh history
-        const result = await rpcCall('chat.history', { 
-          sessionKey: state.currentSession.key, 
-          limit: 500 
-        });
+    function exportChatAsMarkdown() {
+      if (!state.currentSession) {
+        showToast('No session selected', 'error');
+        return;
+      }
+      const key = state.currentSession.key;
+
+      const cached = state.sessionHistoryCache.get(key);
+      if (cached && cached.length) {
+        triggerMarkdownDownload(cached, key);
+        return;
+      }
+
+      showToast('Preparing export…', 'info', 2000);
+      rpcCall('chat.history', { sessionKey: key, limit: 500 }).then(result => {
         const messages = result?.messages || [];
-        
-        if (messages.length === 0) {
+        if (!messages.length) {
           showToast('No messages to export', 'info');
           return;
         }
-        
-        // Build markdown
-        const sessionName = getSessionName(state.currentSession);
-        const timestamp = new Date().toISOString();
-        const dateStr = new Date().toISOString().split('T')[0];
-        
-        let md = `# Chat Export: ${sessionName}\n`;
-        md += `Exported: ${timestamp}\n\n`;
-        md += `---\n\n`;
-        
-        for (const msg of messages) {
-          const role = msg.role === 'user' ? 'User' : 'Assistant';
-          md += `## ${role}\n\n`;
-          
-          // Handle content
-          if (typeof msg.content === 'string') {
-            md += msg.content + '\n\n';
-          } else if (Array.isArray(msg.content)) {
-            for (const block of msg.content) {
-              if (block.type === 'text') {
-                md += block.text + '\n\n';
-              } else if (block.type === 'tool_use') {
-                md += `\`\`\`tool_call: ${block.name}\n`;
-                md += JSON.stringify(block.input, null, 2) + '\n';
-                md += `\`\`\`\n\n`;
-              } else if (block.type === 'tool_result') {
-                const content = typeof block.content === 'string' 
-                  ? block.content 
-                  : JSON.stringify(block.content, null, 2);
-                const preview = content.length > 500 
-                  ? content.slice(0, 500) + '...' 
-                  : content;
-                md += `\`\`\`tool_result\n${preview}\n\`\`\`\n\n`;
-              } else if (block.type === 'image') {
-                md += `[Image: ${block.source?.media_type || 'image'}]\n\n`;
-              }
-            }
-          }
-          
-          md += `---\n\n`;
-        }
-        
-        // Sanitize session key for filename
-        const safeKey = state.currentSession.key
-          .replace(/[^a-zA-Z0-9-_]/g, '-')
-          .replace(/-+/g, '-')
-          .slice(0, 50);
-        const filename = `chat-${safeKey}-${dateStr}.md`;
-        
-        // Trigger download via data URI (more reliable filename than blob URLs
-        // which some Chromium builds ignore the download attribute for).
-        const a = document.createElement('a');
-        a.href = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(md);
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        
-      } catch (err) {
+        state.sessionHistoryCache.set(key, messages);
+        triggerMarkdownDownload(messages, key);
+      }).catch(err => {
         console.error('Export failed:', err);
         showToast('Export failed: ' + err.message, 'error');
-      }
+      });
     }
-    
+
+    function buildChatMarkdown(messages) {
+      const sessionName = getSessionName(state.currentSession);
+      const timestamp = new Date().toISOString();
+
+      let md = `# Chat Export: ${sessionName}\n`;
+      md += `Exported: ${timestamp}\n\n`;
+      md += `---\n\n`;
+
+      for (const msg of messages) {
+        const role = msg.role === 'user' ? 'User' : 'Assistant';
+        md += `## ${role}\n\n`;
+
+        if (typeof msg.content === 'string') {
+          md += msg.content + '\n\n';
+        } else if (Array.isArray(msg.content)) {
+          for (const block of msg.content) {
+            if (block.type === 'text') {
+              md += block.text + '\n\n';
+            } else if (block.type === 'tool_use') {
+              md += `\`\`\`tool_call: ${block.name}\n`;
+              md += JSON.stringify(block.input, null, 2) + '\n';
+              md += `\`\`\`\n\n`;
+            } else if (block.type === 'tool_result') {
+              const content = typeof block.content === 'string'
+                ? block.content
+                : JSON.stringify(block.content, null, 2);
+              const preview = content.length > 500
+                ? content.slice(0, 500) + '...'
+                : content;
+              md += `\`\`\`tool_result\n${preview}\n\`\`\`\n\n`;
+            } else if (block.type === 'image') {
+              md += `[Image: ${block.source?.media_type || 'image'}]\n\n`;
+            }
+          }
+        }
+
+        md += `---\n\n`;
+      }
+
+      return md;
+    }
+
+    function triggerMarkdownDownload(messages, sessionKey) {
+      const md = buildChatMarkdown(messages);
+      const dateStr = new Date().toISOString().split('T')[0];
+      const safeKey = sessionKey
+        .replace(/[^a-zA-Z0-9-_]/g, '-')
+        .replace(/-+/g, '-')
+        .slice(0, 50);
+      const filename = `chat-${safeKey}-${dateStr}.md`;
+
+      // Primary: File System Access API (Chrome/Edge 86+ over HTTPS)
+      if (window.showSaveFilePicker) {
+        window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{
+            description: 'Markdown',
+            accept: { 'text/markdown': ['.md'] },
+          }],
+        }).then(handle => handle.createWritable())
+          .then(writable => writable.write(md).then(() => writable.close()))
+          .then(() => showToast('Exported!', 'success', 1500))
+          .catch(err => {
+            if (err.name !== 'AbortError') console.error('[EXPORT] Save failed:', err);
+          });
+        return;
+      }
+
+      // Fallback: POST to /api/export which returns Content-Disposition header
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/api/export';
+      form.style.display = 'none';
+      const fInput = document.createElement('input');
+      fInput.type = 'hidden';
+      fInput.name = 'filename';
+      fInput.value = filename;
+      form.appendChild(fInput);
+      const cInput = document.createElement('textarea');
+      cInput.name = 'content';
+      cInput.textContent = md;
+      form.appendChild(cInput);
+      document.body.appendChild(form);
+      form.submit();
+      document.body.removeChild(form);
+    }
+
+    function copyChatAsMarkdown() {
+      if (!state.currentSession) {
+        showToast('No session selected', 'error');
+        return;
+      }
+      const key = state.currentSession.key;
+      const cached = state.sessionHistoryCache.get(key);
+      if (cached && cached.length) {
+        copyToClipboard(buildChatMarkdown(cached))
+          .then(() => showToast('Copied to clipboard', 'success', 1500))
+          .catch(() => showToast('Copy failed', 'error'));
+        return;
+      }
+      showToast('Preparing…', 'info', 1500);
+      rpcCall('chat.history', { sessionKey: key, limit: 500 }).then(result => {
+        const messages = result?.messages || [];
+        if (!messages.length) {
+          showToast('No messages to copy', 'info');
+          return;
+        }
+        state.sessionHistoryCache.set(key, messages);
+        copyToClipboard(buildChatMarkdown(messages))
+          .then(() => showToast('Copied to clipboard', 'success', 1500))
+          .catch(() => showToast('Copy failed', 'error'));
+      }).catch(err => {
+        console.error('Copy failed:', err);
+        showToast('Copy failed: ' + err.message, 'error');
+      });
+    }
+
     function headerAction() {
       if (state.currentSession?.key === 'agent:main:main') {
         if (confirm('Start a new session? This will reset the conversation.')) {
@@ -9114,6 +9305,10 @@ Response format:
         }
       }, 30000);
     }
+    
+    // Expose functions needed by onclick handlers in HTML
+    window.exportChatAsMarkdown = exportChatAsMarkdown;
+    window.copyChatAsMarkdown = copyChatAsMarkdown;
     
     try { console.log('[ClawCondos] build', window.__v2_build); } catch {}
     init().catch((e) => console.error('[init] failed', e));

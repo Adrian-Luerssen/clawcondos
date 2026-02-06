@@ -2056,6 +2056,27 @@ body {
   background: rgba(91,156,244,0.14);
 }
 
+.export-group { display: flex; }
+.export-group .export-btn { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.export-group .export-btn-icon { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; border-left: none; }
+.export-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-family: var(--font-sans);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all var(--transition-fast);
+}
+.export-btn:hover { border-color: var(--accent); color: var(--accent); }
+.export-btn svg { width: 14px; height: 14px; fill: currentColor; }
+.export-btn-icon { padding: var(--space-xs); }
+
 /* In-app nav surfaces should NOT look like default links */
 a.condo-header, a.goal-item, a.session-item, a.item-link, a.condo-goal-row, a.condo-card-header, a.condo-goal-card, a.session-card, a.goal-card, a.condo-card {
   color: inherit;
@@ -2145,4 +2166,149 @@ a.condo-goal-card, a.session-card, a.goal-card, a.condo-card {
   font-size: 13px;
   line-height: 1.6;
   white-space: normal;
+}
+
+/* ── Goal file tracking (sub-view toggle + tracked files) ── */
+
+.goal-files-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(0,0,0,0.15);
+}
+
+.goal-files-toggle-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.goal-files-toggle-btn:hover {
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.04);
+}
+
+.goal-files-toggle-btn.active {
+  color: rgba(255,255,255,0.92);
+  background: rgba(96,165,250,0.14);
+}
+
+.goal-tracked-group {
+  margin-bottom: 14px;
+}
+
+.goal-tracked-group-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(148,163,184,0.75);
+  padding: 6px 0 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 4px;
+}
+
+.goal-tracked-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  transition: background 0.12s;
+}
+
+.goal-tracked-file:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.goal-tracked-file-icon {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.goal-tracked-file-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.goal-tracked-file-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.goal-tracked-file-path {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.goal-tracked-file-source {
+  font-size: 12px;
+  flex-shrink: 0;
+  cursor: help;
+}
+
+.goal-tracked-file-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.goal-tracked-file-remove {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.goal-tracked-file:hover .goal-tracked-file-remove {
+  opacity: 0.6;
+}
+
+.goal-tracked-file-remove:hover {
+  opacity: 1 !important;
+  color: rgba(248,113,113,0.95);
+}
+
+.goal-file-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.goal-file-add-input {
+  flex: 1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
 }

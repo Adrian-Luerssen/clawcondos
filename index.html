@@ -483,10 +483,14 @@
             <button class="verbose-btn" data-verbose="full" onclick="setVerboseMode('full')">V full</button>
           </div>
 
-          <button class="export-btn" onclick="exportChatAsMarkdown()" title="Export as Markdown">
-            <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-            Export
-          </button>
+          <div class="export-group">
+            <button class="export-btn" onclick="exportChatAsMarkdown()" title="Export as Markdown">
+              <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+              Export
+            </button><button class="export-btn export-btn-icon" onclick="copyChatAsMarkdown()" title="Copy as Markdown">
+              <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            </button>
+          </div>
         </div>
         <div class="chat-messages" id="chatMessages"></div>
         
@@ -1288,6 +1292,21 @@
       }, durationMs);
     }
     
+    /** Copy text to clipboard with execCommand fallback for HTTP contexts. */
+    async function copyToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try { await navigator.clipboard.writeText(text); return; } catch {}
+      }
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // WEBSOCKET CONNECTION
     // ═══════════════════════════════════════════════════════════════
@@ -2312,7 +2331,7 @@
       for (const t of tasks) {
         if (!t) continue;
         total++;
-        if (t.done) done++;
+        if (t.done || t.status === 'done') done++;
       }
       return { done, total };
     }
@@ -2365,22 +2384,26 @@
       if (!tasks.length) {
         tasksEl.innerHTML = `<div class="empty-state">No tasks yet. Add the next physical step.</div>`;
       } else {
+        // All values are escaped via escapeHtml() before insertion — safe against XSS
         tasksEl.innerHTML = tasks.map((t, idx) => {
           const id = escapeHtml(t.id || String(idx));
-          const checked = t.done ? 'checked' : '';
-          const spawnBtn = (!t.sessionKey && !t.done)
+          const taskStatus = t.status || (t.done ? 'done' : 'pending');
+          const isDone = t.done || taskStatus === 'done';
+          const hasSession = t.sessionKey ? 'has-session' : '';
+          const spawnBtn = (!t.sessionKey && !isDone)
             ? `<button class="goal-task-spawn" onclick="event.stopPropagation(); openSpawnTaskModal('${escapeHtml(goal.id)}','${id}')" title="Spawn agent session">▶</button>`
             : '';
-          const sessionTag = t.sessionKey
-            ? `<span class="goal-task-session" title="${escapeHtml(t.sessionKey)}">${escapeHtml(t.sessionKey.split(':').pop())}</span>`
-            : '';
+          const tooltipParts = [taskStatus];
+          if (t.sessionKey) tooltipParts.push('session: ' + t.sessionKey);
+          if (t.summary) tooltipParts.push(t.summary);
+          const tooltip = escapeHtml(tooltipParts.join(' · '));
           return `
-            <div class="goal-task ${t.done ? 'done' : ''}">
-              <label class="goal-task-check">
-                <input type="checkbox" ${checked} onchange="toggleGoalTask('${id}')">
-                <span class="goal-task-text">${escapeHtml(t.text || '')}</span>
-                ${sessionTag}
-              </label>
+            <div class="goal-task ${isDone ? 'done' : ''}">
+              <div class="goal-task-status ${escapeHtml(taskStatus)} ${hasSession}"
+                onclick="cycleTaskStatus('${id}')"
+                oncontextmenu="showTaskStatusMenu(event,'${id}')"
+                title="${tooltip}"></div>
+              <span class="goal-task-text">${escapeHtml(t.text || '')}</span>
               ${spawnBtn}
               <button class="goal-task-del" onclick="deleteGoalTask('${id}')" title="Delete">×</button>
             </div>
@@ -2447,18 +2470,63 @@
       const text = (input.value || '').trim();
       if (!text) return;
       const tasks = Array.isArray(goal.tasks) ? goal.tasks.slice() : [];
-      tasks.unshift({ id: uid('task'), text, done: false });
+      tasks.unshift({ id: uid('task'), text, done: false, status: 'pending' });
       input.value = '';
       await updateGoal(goal.id, { tasks });
     }
 
-    async function toggleGoalTask(taskId) {
+    async function cycleTaskStatus(taskId) {
       const goal = state.goals.find(g => g.id === state.currentGoalOpenId);
       if (!goal) return;
       const tasks = Array.isArray(goal.tasks) ? goal.tasks.map(t => ({...t})) : [];
       const idx = tasks.findIndex(t => String(t.id) === String(taskId));
       if (idx === -1) return;
-      tasks[idx].done = !tasks[idx].done;
+      const cur = tasks[idx].status || (tasks[idx].done ? 'done' : 'pending');
+      const cycle = { pending: 'in-progress', 'in-progress': 'done', done: 'pending', blocked: 'in-progress', waiting: 'in-progress' };
+      const next = cycle[cur] || 'pending';
+      tasks[idx].status = next;
+      tasks[idx].done = next === 'done';
+      await updateGoal(goal.id, { tasks });
+    }
+
+    function showTaskStatusMenu(event, taskId) {
+      event.preventDefault();
+      const existing = document.querySelector('.task-status-menu');
+      if (existing) existing.remove();
+
+      const menu = document.createElement('div');
+      menu.className = 'task-status-menu';
+      menu.style.left = event.clientX + 'px';
+      menu.style.top = event.clientY + 'px';
+
+      const statuses = ['pending', 'in-progress', 'waiting', 'blocked', 'done'];
+      for (const s of statuses) {
+        const item = document.createElement('div');
+        item.className = 'task-status-menu-item';
+        // All text set via textContent — safe against XSS
+        const dot = document.createElement('span');
+        dot.className = 'dot ' + s;
+        const label = document.createElement('span');
+        label.textContent = s;
+        item.appendChild(dot);
+        item.appendChild(label);
+        item.onclick = () => { menu.remove(); setTaskStatus(taskId, s); };
+        menu.appendChild(item);
+      }
+
+      document.body.appendChild(menu);
+      const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); } };
+      setTimeout(() => document.addEventListener('click', close), 0);
+    }
+
+    async function setTaskStatus(taskId, status) {
+      const goal = state.goals.find(g => g.id === state.currentGoalOpenId);
+      if (!goal) return;
+      const tasks = Array.isArray(goal.tasks) ? goal.tasks.map(t => ({...t})) : [];
+      const idx = tasks.findIndex(t => String(t.id) === String(taskId));
+      if (idx === -1) return;
+      tasks[idx].status = status;
+      tasks[idx].done = status === 'done';
       await updateGoal(goal.id, { tasks });
     }
 
@@ -5028,87 +5096,128 @@ Response format:
     // ═══════════════════════════════════════════════════════════════
     // EXPORT
     // ═══════════════════════════════════════════════════════════════
+    function buildChatMarkdown(messages) {
+      const sessionName = getSessionName(state.currentSession);
+      const timestamp = new Date().toISOString();
+
+      let md = `# Chat Export: ${sessionName}\n`;
+      md += `Exported: ${timestamp}\n\n`;
+      md += `---\n\n`;
+
+      for (const msg of messages) {
+        const role = msg.role === 'user' ? 'User' : 'Assistant';
+        md += `## ${role}\n\n`;
+
+        if (typeof msg.content === 'string') {
+          md += msg.content + '\n\n';
+        } else if (Array.isArray(msg.content)) {
+          for (const block of msg.content) {
+            if (block.type === 'text') {
+              md += block.text + '\n\n';
+            } else if (block.type === 'tool_use') {
+              md += `\`\`\`tool_call: ${block.name}\n`;
+              md += JSON.stringify(block.input, null, 2) + '\n';
+              md += `\`\`\`\n\n`;
+            } else if (block.type === 'tool_result') {
+              const content = typeof block.content === 'string'
+                ? block.content
+                : JSON.stringify(block.content, null, 2);
+              const preview = content.length > 500
+                ? content.slice(0, 500) + '...'
+                : content;
+              md += `\`\`\`tool_result\n${preview}\n\`\`\`\n\n`;
+            } else if (block.type === 'image') {
+              md += `[Image: ${block.source?.media_type || 'image'}]\n\n`;
+            }
+          }
+        }
+
+        md += `---\n\n`;
+      }
+
+      return md;
+    }
+
+    async function fetchChatMessages() {
+      const result = await rpcCall('chat.history', {
+        sessionKey: state.currentSession.key,
+        limit: 500
+      });
+      return result?.messages || [];
+    }
+
     async function exportChatAsMarkdown() {
       if (!state.currentSession) return;
-      
+
       try {
-        // Fetch fresh history
-        const result = await rpcCall('chat.history', { 
-          sessionKey: state.currentSession.key, 
-          limit: 500 
-        });
-        const messages = result?.messages || [];
-        
-        if (messages.length === 0) {
+        const messages = await fetchChatMessages();
+        if (!messages.length) {
           showToast('No messages to export', 'info');
           return;
         }
-        
-        // Build markdown
-        const sessionName = getSessionName(state.currentSession);
-        const timestamp = new Date().toISOString();
+
+        const md = buildChatMarkdown(messages);
         const dateStr = new Date().toISOString().split('T')[0];
-        
-        let md = `# Chat Export: ${sessionName}\n`;
-        md += `Exported: ${timestamp}\n\n`;
-        md += `---\n\n`;
-        
-        for (const msg of messages) {
-          const role = msg.role === 'user' ? 'User' : 'Assistant';
-          md += `## ${role}\n\n`;
-          
-          // Handle content
-          if (typeof msg.content === 'string') {
-            md += msg.content + '\n\n';
-          } else if (Array.isArray(msg.content)) {
-            for (const block of msg.content) {
-              if (block.type === 'text') {
-                md += block.text + '\n\n';
-              } else if (block.type === 'tool_use') {
-                md += `\`\`\`tool_call: ${block.name}\n`;
-                md += JSON.stringify(block.input, null, 2) + '\n';
-                md += `\`\`\`\n\n`;
-              } else if (block.type === 'tool_result') {
-                const content = typeof block.content === 'string' 
-                  ? block.content 
-                  : JSON.stringify(block.content, null, 2);
-                const preview = content.length > 500 
-                  ? content.slice(0, 500) + '...' 
-                  : content;
-                md += `\`\`\`tool_result\n${preview}\n\`\`\`\n\n`;
-              } else if (block.type === 'image') {
-                md += `[Image: ${block.source?.media_type || 'image'}]\n\n`;
-              }
-            }
-          }
-          
-          md += `---\n\n`;
-        }
-        
-        // Sanitize session key for filename
         const safeKey = state.currentSession.key
           .replace(/[^a-zA-Z0-9-_]/g, '-')
           .replace(/-+/g, '-')
           .slice(0, 50);
         const filename = `chat-${safeKey}-${dateStr}.md`;
-        
-        // Trigger download
-        const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
+
+        // Primary: File System Access API (Chrome/Edge 86+ over HTTPS)
+        if (window.showSaveFilePicker) {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(md);
+          await writable.close();
+          showToast('Exported!', 'success', 1500);
+          return;
+        }
+
+        // Fallback: POST to /api/export which returns Content-Disposition header
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/api/export';
+        form.style.display = 'none';
+        const fInput = document.createElement('input');
+        fInput.type = 'hidden';
+        fInput.name = 'filename';
+        fInput.value = filename;
+        form.appendChild(fInput);
+        const cInput = document.createElement('textarea');
+        cInput.name = 'content';
+        cInput.textContent = md;
+        form.appendChild(cInput);
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+
       } catch (err) {
+        if (err.name === 'AbortError') return;
         console.error('Export failed:', err);
         showToast('Export failed: ' + err.message, 'error');
       }
     }
-    
+
+    async function copyChatAsMarkdown() {
+      if (!state.currentSession) return;
+      try {
+        const messages = await fetchChatMessages();
+        if (!messages.length) {
+          showToast('No messages to copy', 'info');
+          return;
+        }
+        await copyToClipboard(buildChatMarkdown(messages));
+        showToast('Copied to clipboard', 'success', 1500);
+      } catch (err) {
+        console.error('Copy failed:', err);
+        showToast('Copy failed: ' + err.message, 'error');
+      }
+    }
+
     function headerAction() {
       if (state.currentSession?.key === 'agent:main:main') {
         if (confirm('Start a new session? This will reset the conversation.')) {

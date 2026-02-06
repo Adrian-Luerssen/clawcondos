@@ -521,10 +521,14 @@
                   <button class="verbose-btn" data-verbose="full" onclick="setVerboseMode('full')">V full</button>
                 </div>
 
-                <button class="export-btn" onclick="exportChatAsMarkdown()" title="Export as Markdown">
-                  <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-                  Export
-                </button>
+                <div class="export-group">
+                  <button class="export-btn" onclick="exportChatAsMarkdown()" title="Export as Markdown">
+                    <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                    Export
+                  </button><button class="export-btn export-btn-icon" onclick="copyChatAsMarkdown()" title="Copy as Markdown">
+                    <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                  </button>
+                </div>
               </div>
               <div class="chat-messages" id="chatMessages"></div>
               <button class="jump-to-latest" id="jumpToLatest" title="Jump to latest">
@@ -621,6 +625,6 @@
   <!-- Load shared modules BEFORE app.js so it can mount them dynamically -->
   <script src="/js/media-upload.js"></script>
   <script src="/js/voice-recorder.js"></script>
-  <script src="/app.js?v=27"></script>
+  <script src="/app.js?v=36"></script>
 </body>
 </html>

@@ -3138,6 +3138,19 @@ body {
   background: rgba(91,156,244,0.10);
 }
 
+.export-group {
+  display: flex;
+}
+
+.export-group .export-btn {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.export-group .export-btn-icon {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-left: none;
+}
+
 .export-btn {
   background: none;
   border: 1px solid var(--border);
@@ -3153,15 +3166,19 @@ body {
   transition: all var(--transition-fast);
 }
 
-.export-btn:hover { 
-  border-color: var(--accent); 
-  color: var(--accent); 
+.export-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
-.export-btn svg { 
-  width: 14px; 
-  height: 14px; 
-  fill: currentColor; 
+.export-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.export-btn-icon {
+  padding: var(--space-xs);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -5052,17 +5069,73 @@ a:focus-visible {
   background: transparent;
 }
 
-.goal-task-check {
-  display: flex;
-  align-items: center;
+/* Task status dot */
+.goal-task-status {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
   cursor: pointer;
+  background: var(--text-dim);
+  transition: all var(--transition-fast);
+  position: relative;
+}
+.goal-task-status.pending   { background: var(--text-dim); }
+.goal-task-status.in-progress { background: var(--yellow); animation: task-pulse 1.2s ease-in-out infinite; }
+.goal-task-status.blocked   { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.goal-task-status.waiting   { background: var(--accent); animation: task-pulse 2s ease-in-out infinite; }
+.goal-task-status.done      { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+.goal-task-status.has-session {
+  box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--accent);
+}
+.goal-task-status.done.has-session {
+  box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--accent), 0 0 6px var(--green);
+}
+.goal-task-status.blocked.has-session {
+  box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--accent), 0 0 6px var(--red);
 }
 
-.goal-task-check input { 
-  accent-color: var(--accent); 
-  width: 16px; 
-  height: 16px; 
+@keyframes task-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
+
+/* Task status context menu */
+.task-status-menu {
+  position: fixed;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 4px 0;
+  z-index: 9999;
+  min-width: 140px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.task-status-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+  transition: background var(--transition-fast);
+}
+.task-status-menu-item:hover {
+  background: var(--bg-input);
+}
+.task-status-menu-item .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.task-status-menu-item .dot.pending     { background: var(--text-dim); }
+.task-status-menu-item .dot.in-progress { background: var(--yellow); }
+.task-status-menu-item .dot.blocked     { background: var(--red); }
+.task-status-menu-item .dot.waiting     { background: var(--accent); }
+.task-status-menu-item .dot.done        { background: var(--green); }
 
 .goal-task-text {
   flex: 1;
@@ -5112,14 +5185,6 @@ a:focus-visible {
 .goal-task:hover .goal-task-spawn { opacity: 1; }
 .goal-task-spawn:hover { background: var(--accent-dim); }
 
-.goal-task-session {
-  font-size: 10px;
-  color: var(--text-dim);
-  background: var(--bg-input);
-  padding: 1px 5px;
-  border-radius: 3px;
-  margin-left: 6px;
-}
 
 .goal-task-new {
   display: flex;
