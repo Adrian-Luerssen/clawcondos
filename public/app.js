@@ -2598,7 +2598,7 @@ function initAutoArchiveUI() {
       // Build kickoff payload (single message, includes current goal state).
       const tasks = Array.isArray(goal.tasks) ? goal.tasks : [];
       const tasksText = tasks.length
-        ? tasks.map((t, i) => `${i + 1}. [${t.done ? 'x' : ' '}] ${t.text || ''}`.trim()).join('\n')
+        ? tasks.map(t => `- [${t.done ? 'x' : ' '}] ${t.text || ''} [${t.id}]`.trim()).join('\n')
         : '(no tasks yet)';
       const def = (goal.notes || goal.description || '').trim() || '(no definition yet)';
 
