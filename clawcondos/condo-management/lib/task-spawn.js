@@ -41,10 +41,10 @@ export function createTaskSpawnHandler(store) {
         '',
         '---',
         `## Your Assignment: ${task.text}`,
-        task.description ? `\n${task.description}` : '',
+        task.description ? `\n${task.description}` : null,
         '',
         'When you complete this task, use the goal_update tool to mark it done.',
-      ].filter(Boolean).join('\n');
+      ].filter(line => line != null).join('\n');
 
       // Link session to goal and update task
       task.sessionKey = sessionKey;

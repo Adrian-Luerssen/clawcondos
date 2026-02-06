@@ -126,6 +126,21 @@ describe('buildGoalContext with sibling sessions', () => {
     const ctx = buildGoalContext(goal, { currentSessionKey: 'agent:main:s2' });
     expect(ctx).toContain('(agent: agent:main:s1)');
   });
+
+  it('does not show — unassigned for done tasks with null sessionKey', () => {
+    const g = {
+      id: 'g1', title: 'Test', description: '', status: 'active',
+      priority: null, deadline: null,
+      tasks: [
+        { id: 't1', text: 'Completed thing', done: true, sessionKey: null },
+      ],
+      sessions: [],
+    };
+    const ctx = buildGoalContext(g, { currentSessionKey: 'agent:main:s1' });
+    expect(ctx).toContain('[x] Completed thing [t1]');
+    expect(ctx).not.toContain('— unassigned');
+    expect(ctx).not.toContain('← you');
+  });
 });
 
 describe('buildProjectSummary', () => {
