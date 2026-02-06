@@ -721,6 +721,229 @@
   transition: all 0.15s ease;
 }
 
+#agentsMainBody .grid-card.active {
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(96, 165, 250, 0.06);
+}
+
+/* ── Cron status badges ── */
+
+.cron-status-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.status-success { background: rgba(34,197,94,0.14); color: #4ade80; }
+.status-failed { background: rgba(239,68,68,0.14); color: #f87171; }
+.status-running { background: rgba(59,130,246,0.14); color: #60a5fa; }
+.status-disabled { background: rgba(107,114,128,0.14); color: #9ca3af; }
+.status-idle { background: rgba(163,163,163,0.10); color: #a3a3a3; }
+.status-pending { background: rgba(245,158,11,0.14); color: #fbbf24; }
+.status-unknown { background: rgba(107,114,128,0.10); color: #6b7280; }
+
+/* ── Cron detail panel ── */
+
+.cron-detail-content {
+  padding: 16px;
+}
+
+.cron-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.cron-action-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.cron-action-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.16);
+}
+
+.cron-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cron-trigger-btn {
+  border-color: rgba(96, 165, 250, 0.3);
+  color: var(--accent-blue, #5b9cf4);
+}
+
+.cron-trigger-btn:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.12);
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+.cron-detail-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 16px;
+}
+
+.cron-detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.cron-detail-label {
+  width: 80px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.cron-detail-value {
+  flex: 1;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+.cron-detail-section {
+  margin-top: 16px;
+}
+
+.cron-detail-section-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.cron-detail-prompt {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.cron-detail-outcome {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+/* ── Run history ── */
+
+.cron-detail-runs-loading,
+.cron-detail-runs-error,
+.cron-detail-runs-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+.cron-detail-runs-error {
+  color: #f87171;
+}
+
+.cron-runs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cron-run-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background 0.1s ease;
+  flex-wrap: wrap;
+}
+
+.cron-run-item:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.cron-run-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  top: -1px;
+}
+
+.run-dot-success { background: #22c55e; }
+.run-dot-failed { background: #ef4444; }
+.run-dot-other { background: #6b7280; }
+
+.cron-run-time {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 60px;
+}
+
+.cron-run-duration {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.cron-run-status {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cron-run-output {
+  width: 100%;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 0 0 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 1000px) {

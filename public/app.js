@@ -738,8 +738,17 @@
           return false;
         }
       }
-      
+
       return true;
+    }
+
+    function matchesGoalSearch(goal) {
+      if (!state.searchQuery) return true;
+      const q = state.searchQuery;
+      const title = (goal.title || '').toLowerCase();
+      const desc = (goal.description || '').toLowerCase();
+      const nextTask = (goal.nextTask || '').toLowerCase();
+      return title.includes(q) || desc.includes(q) || nextTask.includes(q);
     }
     
     
@@ -1441,9 +1450,10 @@ function initAutoArchiveUI() {
           if (message?.content) {
             const text = extractText(message.content);
             if (text) {
-              finalizeStreamingMessage(runId, text, '');
-              // Auto-apply goal patches when agent updates tasks/status.
+              // Auto-apply goal patches, then strip JSON from display
               try { await maybeAutoApplyGoalPatch(sessionKey, text); } catch {}
+              const displayText = stripGoalPatchJson(text) || text;
+              finalizeStreamingMessage(runId, displayText, '');
             }
           } else {
             removeStreamingMessage(runId, '');
@@ -1455,8 +1465,9 @@ function initAutoArchiveUI() {
           if (message?.content) {
             const text = extractText(message.content);
             if (text) {
-              finalizeStreamingMessage(runId, text, 'goal');
               try { await maybeAutoApplyGoalPatch(sessionKey, text); } catch {}
+              const displayText = stripGoalPatchJson(text) || text;
+              finalizeStreamingMessage(runId, displayText, 'goal');
             }
           } else {
             removeStreamingMessage(runId, 'goal');
@@ -1541,6 +1552,9 @@ function initAutoArchiveUI() {
           if (!container) return;
           const thinking = container.querySelector('.message.thinking');
           if (thinking) thinking.remove();
+          // Clear "No messages yet" placeholder when streaming starts
+          const noMsg = container.querySelector('.message.system');
+          if (noMsg && noMsg.textContent.includes('No messages')) noMsg.remove();
 
           el = document.createElement('div');
           el.id = `streaming-${runId}`;
@@ -2179,10 +2193,10 @@ function initAutoArchiveUI() {
       const activeSessions = activeRuns.length;
       
       // Pending goals: goals with status !== 'done'
-      const pendingGoals = goals.filter(g => !isGoalCompleted(g)).length;
-      
+      const pendingGoals = goals.filter(g => !isGoalCompleted(g) && !isGoalDropped(g)).length;
+
       // Completed goals
-      const completedGoals = goals.filter(g => isGoalCompleted(g)).length;
+      const completedGoals = goals.filter(g => isGoalCompleted(g) && !isGoalDropped(g)).length;
       
       // Errors: sessions with error state
       const errorCount = sessions.filter(s => s.lastError || (runs[s.key] && runs[s.key] === 'error')).length;
@@ -2445,7 +2459,7 @@ function initAutoArchiveUI() {
 
 
     function renderCondoGoals(condo, sessionToGoal, goalById) {
-      const goals = Array.from(condo.goals.values()).filter(g => !isGoalCompleted(g) && !isGoalDropped(g) && Array.isArray(g.sessions) && g.sessions.length > 0);
+      const goals = Array.from(condo.goals.values()).filter(g => !isGoalCompleted(g) && !isGoalDropped(g) && Array.isArray(g.sessions) && g.sessions.length > 0 && matchesGoalSearch(g));
       const goalRows = [];
 
       for (const goal of goals) {
@@ -3208,14 +3222,17 @@ function initAutoArchiveUI() {
           const rows = items.map((t, idx) => {
             const id = escapeHtml(t.id || String(idx));
             const checked = t.done ? 'checked' : '';
+            const doneClass = t.done ? 'task-done' : '';
             const badge = t.blocked ? 'blocked' : (t.stage || (t.done ? 'done' : 'backlog'));
             const title = t.text || t.title || '';
             return `
-              <div class="goal-task-row" onclick="toggleGoalTask('${id}')">
+              <div class="goal-task-row ${doneClass}" onclick="toggleGoalTask('${id}')">
                 <input type="checkbox" ${checked} onclick="event.stopPropagation(); toggleGoalTask('${id}')">
                 <div class="goal-badge ${escapeHtml(badge)}"></div>
                 <div class="goal-rtitle">${escapeHtml(title)}</div>
-                <div class="goal-rmeta"><span>${escapeHtml(String(t.id || ''))}</span></div>
+                <div class="goal-rmeta">
+                  <button class="goal-task-delete" onclick="event.stopPropagation(); deleteGoalTask('${id}')" title="Delete task">✕</button>
+                </div>
               </div>
             `;
           }).join('');
@@ -3331,7 +3348,7 @@ function initAutoArchiveUI() {
 
       for (const c of candidates) {
         const trimmed = (c || '').trim();
-        const jsonStr = trimmed.startsWith('{') ? trimmed : extractFirstJsonObject(trimmed);
+        const jsonStr = extractFirstJsonObject(trimmed);
         if (!jsonStr || !jsonStr.trim().startsWith('{')) continue;
 
         try {
@@ -3349,6 +3366,31 @@ function initAutoArchiveUI() {
         } catch {}
       }
       return null;
+    }
+
+    function stripGoalPatchJson(text) {
+      if (!text) return text;
+      // Remove fenced ```json ... ``` blocks containing goalPatch
+      let cleaned = text.replace(/```(?:json)?\s*\n?\s*\{[^`]*?"goalPatch"[^`]*?\}\s*\n?\s*```/gs, '');
+      // Remove bare inline {"goalPatch": ...} JSON (using extractFirstJsonObject to find bounds)
+      const str = cleaned;
+      let idx = 0;
+      while (idx < str.length) {
+        const start = str.indexOf('{', idx);
+        if (start === -1) break;
+        const candidate = extractFirstJsonObject(str.slice(start));
+        if (!candidate) break;
+        try {
+          const obj = JSON.parse(candidate);
+          if (obj?.goalPatch || obj?.clawcondosGoalPatch) {
+            cleaned = cleaned.slice(0, start) + cleaned.slice(start + candidate.length);
+            idx = start;
+            continue;
+          }
+        } catch {}
+        idx = start + 1;
+      }
+      return cleaned.trim();
     }
 
     async function maybeAutoApplyGoalPatch(sessionKey, assistantText) {
@@ -3404,6 +3446,8 @@ function initAutoArchiveUI() {
       const idx = tasks.findIndex(t => String(t.id) === String(taskId));
       if (idx === -1) return;
       tasks[idx].done = !tasks[idx].done;
+      tasks[idx].stage = tasks[idx].done ? 'done' : 'backlog';
+      tasks[idx].status = tasks[idx].done ? 'done' : 'pending';
       await updateGoal(goal.id, { tasks });
     }
 
@@ -3494,6 +3538,7 @@ function initAutoArchiveUI() {
               <div style="margin-top:8px; display:flex; gap:8px;">
                 ${state.archivedTab === 'dropped' ? `<button class=\"ghost-btn\" onclick=\"event.preventDefault(); event.stopPropagation(); restoreGoal('${escapeHtml(g.id)}')\">Restore</button>` : ''}
                 ${state.archivedTab === 'done' ? `<button class=\"ghost-btn\" onclick=\"event.preventDefault(); event.stopPropagation(); markGoalActive('${escapeHtml(g.id)}')\">Mark active</button>` : ''}
+                <button class="ghost-btn danger" onclick="event.preventDefault(); event.stopPropagation(); permanentDeleteGoal('${escapeHtml(g.id)}')">Delete</button>
               </div>
             </a>
           `;
@@ -3514,6 +3559,21 @@ function initAutoArchiveUI() {
       renderArchivedGoals();
     }
 
+    async function permanentDeleteGoal(goalId) {
+      const goal = state.goals.find(g => g.id === goalId);
+      if (!goal) return;
+      if (!confirm(`Permanently delete "${goal.title}"? This cannot be undone.`)) return;
+      try {
+        await rpcCall('goals.delete', { id: goalId });
+        await loadGoals();
+        renderArchivedGoals();
+        renderCondoView();
+        showToast('Goal deleted', 'info');
+      } catch {
+        showToast('Failed to delete goal', 'error');
+      }
+    }
+
     async function promptDropGoal() {
       const goal = state.goals.find(g => g.id === state.currentGoalOpenId);
       if (!goal) return;
@@ -3524,6 +3584,19 @@ function initAutoArchiveUI() {
         navigateTo(`condo/${encodeURIComponent(goal.condoId || state.currentCondoId || 'misc:default')}`);
       } catch {
         showToast('Failed to drop goal', 'error');
+      }
+    }
+
+    async function promptDeleteGoal() {
+      const goal = state.goals.find(g => g.id === state.currentGoalOpenId);
+      if (!goal) return;
+      if (!confirm(`Permanently delete goal "${goal.title}"? This cannot be undone.`)) return;
+      try {
+        await rpcCall('goals.delete', { id: goal.id });
+        await loadGoals();
+        navigateTo(`condo/${encodeURIComponent(goal.condoId || state.currentCondoId || 'misc:default')}`);
+      } catch {
+        showToast('Failed to delete goal', 'error');
       }
     }
 
@@ -4503,7 +4576,226 @@ Response format:
 
     function openCronJobDetail(jobId) {
       state.selectedCronJobId = String(jobId || '').trim() || null;
-      renderDetailPanel();
+      if (state.selectedCronJobId) {
+        // Close file viewer if open
+        state.selectedAgentFile = null;
+        state.agentFileContent = null;
+        loadCronRunsForDetail(state.selectedCronJobId);
+      }
+      renderCronDetailPanel();
+      if (state.currentView === 'agents') renderAgentsPage();
+    }
+
+    function closeCronDetail() {
+      state.selectedCronJobId = null;
+      renderCronDetailPanel();
+      if (state.currentView === 'agents') renderAgentsPage();
+    }
+
+    async function loadCronRunsForDetail(jobId) {
+      const id = String(jobId || '').trim();
+      if (!id) return;
+      if (!state.cronRunsByJobId) state.cronRunsByJobId = {};
+      state.cronRunsByJobId[id] = { loaded: false, loading: true, runs: [], error: null };
+      try {
+        const res = await rpcCall('cron.runs', { jobId: id });
+        const runs = res?.runs || res?.items || (Array.isArray(res) ? res : []);
+        state.cronRunsByJobId[id] = { loaded: true, loading: false, runs: Array.isArray(runs) ? runs : [], error: null };
+      } catch (e) {
+        state.cronRunsByJobId[id] = { loaded: true, loading: false, runs: [], error: e?.message || String(e) };
+      }
+      if (state.selectedCronJobId === id) renderCronDetailPanel();
+    }
+
+    async function toggleCronJob(jobId) {
+      const id = String(jobId || '').trim();
+      if (!id) return;
+      const job = (state.cronJobs || []).find(j => String(j.id) === id);
+      if (!job) return;
+      const newEnabled = job.enabled === false;
+      try {
+        await rpcCall('cron.toggle', { jobId: id, enabled: newEnabled });
+        job.enabled = newEnabled;
+        renderCronDetailPanel();
+        if (state.currentView === 'agents') renderAgentsPage();
+      } catch (e) {
+        console.warn('cron.toggle failed:', e?.message || e);
+      }
+    }
+
+    async function triggerCronJob(jobId) {
+      const id = String(jobId || '').trim();
+      if (!id) return;
+      try {
+        await rpcCall('cron.trigger', { jobId: id });
+        // Reload runs after a short delay
+        setTimeout(() => loadCronRunsForDetail(id), 2000);
+      } catch (e) {
+        console.warn('cron.trigger failed:', e?.message || e);
+      }
+    }
+
+    function getCronStatusInfo(job) {
+      if (!job) return { label: 'unknown', color: '#6b7280', cls: 'status-unknown' };
+      if (job.enabled === false) return { label: 'disabled', color: '#6b7280', cls: 'status-disabled' };
+      const last = job.state || {};
+      const status = String(last.lastStatus || '').toLowerCase();
+      if (status === 'running' || status === 'active') return { label: 'running', color: '#3b82f6', cls: 'status-running' };
+      if (status === 'success' || status === 'ok' || status === 'completed') return { label: 'success', color: '#22c55e', cls: 'status-success' };
+      if (status === 'error' || status === 'failed' || status === 'failure') return { label: 'failed', color: '#ef4444', cls: 'status-failed' };
+      if (last.lastRunAtMs) return { label: 'idle', color: '#a3a3a3', cls: 'status-idle' };
+      return { label: 'pending', color: '#f59e0b', cls: 'status-pending' };
+    }
+
+    function estimateNextRun(job) {
+      if (!job || job.enabled === false) return null;
+      const sched = job.schedule;
+      if (!sched) return null;
+      const lastAt = Number(job.state?.lastRunAtMs || 0);
+      if (sched.kind === 'every' && sched.everyMs) {
+        const nextMs = lastAt ? lastAt + Number(sched.everyMs) : Date.now();
+        return nextMs;
+      }
+      if (sched.kind === 'at' && sched.atMs) {
+        const at = Number(sched.atMs);
+        return at > Date.now() ? at : null;
+      }
+      // For cron expressions, we can't easily compute without a parser
+      return null;
+    }
+
+    function formatNextRun(job) {
+      const nextMs = estimateNextRun(job);
+      if (!nextMs) return null;
+      const delta = nextMs - Date.now();
+      if (delta <= 0) return 'due now';
+      const s = Math.floor(delta / 1000);
+      const m = Math.floor(s / 60);
+      const h = Math.floor(m / 60);
+      const d = Math.floor(h / 24);
+      if (d > 0) return 'in ' + d + 'd ' + (h % 24) + 'h';
+      if (h > 0) return 'in ' + h + 'h ' + (m % 60) + 'm';
+      if (m > 0) return 'in ' + m + 'm';
+      return 'in ' + s + 's';
+    }
+
+    function renderCronDetailPanel() {
+      const panel = document.getElementById('agentsRightPanel');
+      if (!panel) return;
+
+      const jobId = state.selectedCronJobId;
+      if (!jobId) {
+        panel.innerHTML = '';
+        panel.classList.remove('open');
+        return;
+      }
+
+      const job = (state.cronJobs || []).find(j => String(j.id) === jobId);
+      if (!job) {
+        panel.innerHTML = '<div style="padding:16px; color: var(--text-muted);">Job not found</div>';
+        panel.classList.add('open');
+        return;
+      }
+
+      const statusInfo = getCronStatusInfo(job);
+      const schedule = formatSchedule(job.schedule);
+      const model = getJobModel(job.payload);
+      const isEnabled = job.enabled !== false;
+      const nextRun = formatNextRun(job);
+      const last = job.state || {};
+      const lastAt = Number(last.lastRunAtMs || 0);
+      const outcome = summarizeOutcome(job.payload);
+      const prompt = String(job.payload?.message || job.payload?.text || job.payload?.prompt || '').trim();
+
+      let html = '<div class="agents-right-header">' +
+        '<span class="agents-right-filename">' + escapeHtml(job.name || job.id) + '</span>' +
+        '<span class="agents-right-close" onclick="closeCronDetail()" title="Close">✕</span>' +
+      '</div>';
+
+      html += '<div class="agents-right-body"><div class="cron-detail-content">';
+
+      // Status + actions bar
+      html += '<div class="cron-detail-actions">' +
+        '<span class="cron-status-badge ' + statusInfo.cls + '">' + escapeHtml(statusInfo.label) + '</span>' +
+        '<button class="cron-action-btn" onclick="toggleCronJob(\'' + escapeHtml(jobId) + '\')">' + (isEnabled ? 'Disable' : 'Enable') + '</button>' +
+        '<button class="cron-action-btn cron-trigger-btn" onclick="triggerCronJob(\'' + escapeHtml(jobId) + '\')" ' + (isEnabled ? '' : 'disabled') + '>Run Now</button>' +
+      '</div>';
+
+      // Info rows
+      html += '<div class="cron-detail-rows">';
+      html += '<div class="cron-detail-row"><span class="cron-detail-label">ID</span><span class="cron-detail-value" style="font-family: \'JetBrains Mono\', monospace; font-size: 11px;">' + escapeHtml(job.id) + '</span></div>';
+      html += '<div class="cron-detail-row"><span class="cron-detail-label">Schedule</span><span class="cron-detail-value">' + escapeHtml(schedule) + '</span></div>';
+      html += '<div class="cron-detail-row"><span class="cron-detail-label">Agent</span><span class="cron-detail-value">' + escapeHtml(job.agentId || 'main') + '</span></div>';
+      html += '<div class="cron-detail-row"><span class="cron-detail-label">Model</span><span class="cron-detail-value">' + escapeHtml(model) + '</span></div>';
+      if (nextRun) {
+        html += '<div class="cron-detail-row"><span class="cron-detail-label">Next run</span><span class="cron-detail-value" style="color: var(--accent-blue, #5b9cf4);">' + escapeHtml(nextRun) + '</span></div>';
+      }
+      if (lastAt) {
+        html += '<div class="cron-detail-row"><span class="cron-detail-label">Last run</span><span class="cron-detail-value">' + escapeHtml(formatRelativeTime(lastAt)) + '</span></div>';
+      }
+      if (last.lastStatus) {
+        html += '<div class="cron-detail-row"><span class="cron-detail-label">Last status</span><span class="cron-detail-value">' + escapeHtml(last.lastStatus) + '</span></div>';
+      }
+      html += '</div>';
+
+      // Prompt/message
+      if (prompt) {
+        html += '<div class="cron-detail-section">' +
+          '<div class="cron-detail-section-label">Prompt</div>' +
+          '<pre class="cron-detail-prompt">' + escapeHtml(prompt) + '</pre>' +
+        '</div>';
+      }
+
+      // Outcome
+      if (outcome) {
+        html += '<div class="cron-detail-section">' +
+          '<div class="cron-detail-section-label">Last outcome</div>' +
+          '<div class="cron-detail-outcome">' + escapeHtml(outcome) + '</div>' +
+        '</div>';
+      }
+
+      // Run history
+      html += '<div class="cron-detail-section">' +
+        '<div class="cron-detail-section-label">Run history</div>';
+
+      if (!state.cronRunsByJobId) state.cronRunsByJobId = {};
+      const runsData = state.cronRunsByJobId[jobId];
+      if (!runsData || runsData.loading) {
+        html += '<div class="cron-detail-runs-loading">Loading runs…</div>';
+      } else if (runsData.error) {
+        html += '<div class="cron-detail-runs-error">' + escapeHtml(runsData.error) + '</div>';
+      } else if (!runsData.runs.length) {
+        html += '<div class="cron-detail-runs-empty">No runs yet</div>';
+      } else {
+        html += '<div class="cron-runs-list">';
+        const runs = runsData.runs.slice().sort((a, b) => (Number(b.startedAtMs || b.ts || 0)) - (Number(a.startedAtMs || a.ts || 0)));
+        for (const run of runs.slice(0, 20)) {
+          const runStatus = String(run.status || run.result || '').toLowerCase();
+          const runTime = Number(run.startedAtMs || run.ts || 0);
+          const duration = Number(run.durationMs || 0);
+          const isSuccess = runStatus === 'success' || runStatus === 'ok' || runStatus === 'completed';
+          const isFail = runStatus === 'error' || runStatus === 'failed' || runStatus === 'failure';
+          const dotCls = isSuccess ? 'run-dot-success' : isFail ? 'run-dot-failed' : 'run-dot-other';
+          const durationStr = duration ? (duration < 1000 ? duration + 'ms' : (duration / 1000).toFixed(1) + 's') : '';
+          const runOutcome = String(run.output || run.message || run.text || '').trim();
+          const shortOutcome = runOutcome.length > 100 ? runOutcome.slice(0, 97) + '…' : runOutcome;
+
+          html += '<div class="cron-run-item">' +
+            '<span class="cron-run-dot ' + dotCls + '"></span>' +
+            '<span class="cron-run-time">' + (runTime ? escapeHtml(formatRelativeTime(runTime)) : '—') + '</span>' +
+            (durationStr ? '<span class="cron-run-duration">' + escapeHtml(durationStr) + '</span>' : '') +
+            '<span class="cron-run-status">' + escapeHtml(runStatus || '—') + '</span>' +
+            (shortOutcome ? '<div class="cron-run-output">' + escapeHtml(shortOutcome) + '</div>' : '') +
+          '</div>';
+        }
+        html += '</div>';
+      }
+
+      html += '</div>'; // section
+      html += '</div></div>'; // content + body
+
+      panel.classList.add('open');
+      panel.innerHTML = html;
     }
 
     async function ensureCronRuns(jobId) {
@@ -5032,21 +5324,22 @@ Response format:
             const outcome = summarizeOutcome(j.payload);
             const last = j.state || {};
             const lastAt = Number(last.lastRunAtMs || 0);
-            const lastStatus = last.lastStatus || '';
-            const line2 = (j.agentId || 'main') + ' · ' + model + ' · ' + (j.enabled === false ? 'disabled' : 'enabled');
-            const line3 = lastAt ? 'last ' + formatRelativeTime(lastAt) + (lastStatus ? ' (' + lastStatus + ')' : '') : '';
-            return '<div class="grid-card" onclick="openCronJobDetail(\'' + escapeHtml(String(j.id)) + '\')">' +
+            const statusInfo = getCronStatusInfo(j);
+            const nextRun = formatNextRun(j);
+            const isSelected = state.selectedCronJobId === String(j.id);
+            const line2 = (j.agentId || 'main') + ' · ' + model;
+            const line3 = lastAt ? 'last ' + formatRelativeTime(lastAt) : '';
+            return '<div class="grid-card' + (isSelected ? ' active' : '') + '" onclick="openCronJobDetail(\'' + escapeHtml(String(j.id)) + '\')">' +
               '<div class="grid-card-header">' +
                 '<div class="grid-card-icon">⏰</div>' +
-                '<div class="grid-card-actions">' +
-                  '<button class="icon-btn" title="Details" onclick="event.stopPropagation(); openCronJobDetail(\'' + escapeHtml(String(j.id)) + '\')">ℹ️</button>' +
-                '</div>' +
+                '<span class="cron-status-badge ' + statusInfo.cls + '" style="font-size:10px; padding:2px 7px;">' + escapeHtml(statusInfo.label) + '</span>' +
               '</div>' +
               '<div class="grid-card-title">' + escapeHtml(String(name)) + '</div>' +
               '<div class="grid-card-desc">' + escapeHtml(schedule) + '</div>' +
               '<div class="grid-card-desc">' + escapeHtml(line2) + '</div>' +
               (line3 ? '<div class="grid-card-desc">' + escapeHtml(line3) + '</div>' : '') +
-              (outcome ? '<div class="grid-card-desc" style="color: var(--text-dim); margin-top:6px;">' + escapeHtml(outcome) + '</div>' : '') +
+              (nextRun ? '<div class="grid-card-desc" style="color: var(--accent-blue, #5b9cf4);">next: ' + escapeHtml(nextRun) + '</div>' : '') +
+              (outcome ? '<div class="grid-card-desc" style="color: var(--text-dim); margin-top:4px;">' + escapeHtml(outcome) + '</div>' : '') +
             '</div>';
           }).join('') : '<div class="grid-card">' + (agentJobs.length ? 'No recurring tasks match filters' : 'No recurring tasks for this agent') + '</div>');
 
@@ -5173,8 +5466,16 @@ Response format:
 
       body.innerHTML = tabBarHtml + '<div style="padding: 18px 20px;">' + tabContentHtml + '</div>';
 
-      // Render file viewer in right panel
-      renderAgentFileViewerPanel();
+      // Render right panel based on active tab
+      if (activeTab === 'tasks' && state.selectedCronJobId) {
+        renderCronDetailPanel();
+      } else if (activeTab === 'files') {
+        renderAgentFileViewerPanel();
+      } else {
+        // Close right panel on other tabs
+        const rp = document.getElementById('agentsRightPanel');
+        if (rp) { rp.innerHTML = ''; rp.classList.remove('open'); }
+      }
 
       // Wire up Tasks tab event handlers
       if (activeTab === 'tasks') {
@@ -5205,6 +5506,9 @@ Response format:
 
     function selectAgentTab(tab) {
       state.agentTab = tab;
+      // Clear right panel selections when switching tabs
+      if (tab !== 'tasks') state.selectedCronJobId = null;
+      if (tab !== 'files') { state.selectedAgentFile = null; state.agentFileContent = null; }
       renderAgentsPage();
     }
 
@@ -6253,7 +6557,14 @@ Response format:
 
     function buildGoalBreadcrumbs(goal) {
       const condoId = goal.condoId || state.currentCondoId || 'misc:default';
-      const condoName = goal.condoName || 'Condo';
+      const condoName = (() => {
+        if (goal.condoName) return goal.condoName;
+        const cid = condoId;
+        if (cid === 'cron') return 'Recurring';
+        const s = (state.sessions || []).find(x => getSessionCondoId(x) === cid);
+        if (s) return getSessionCondoName(s);
+        return cid.includes(':') ? cid.split(':').pop() : cid;
+      })();
       return [
         { label: '🏠', onClick: "navigateTo('dashboard')" },
         { label: `🏢 ${escapeHtml(condoName)}`, onClick: `openCondo('${escapeHtml(condoId)}')` },
@@ -7617,6 +7928,7 @@ Response format:
       if (stopBtn) {
         const canStop = state.isThinking && !!(state.currentSession?.key);
         stopBtn.disabled = !canStop;
+        stopBtn.style.display = canStop ? '' : 'none';
       }
 
       // Goal composer uses separate ids
@@ -7627,6 +7939,7 @@ Response format:
       if (stopGoal) {
         const canStopGoal = state.isThinking && !!(state.goalChatSessionKey);
         stopGoal.disabled = !canStopGoal;
+        stopGoal.style.display = canStopGoal ? '' : 'none';
       }
     }
 

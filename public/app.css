@@ -1370,8 +1370,12 @@ body {
 .goal-badge.doing{ background: rgba(96,165,250,.95); }
 .goal-badge.review{ background: rgba(251,191,36,.95); }
 .goal-badge.done{ background: rgba(52,211,153,.95); }
-.goal-rtitle{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; font-weight:650; }
-.goal-rmeta{ display:flex; gap:8px; align-items:center; color: var(--text-muted); font-size:11px; }
+.goal-rtitle{ flex:1; min-width:0; font-size:13px; font-weight:650; overflow-wrap: break-word; word-break: break-word; }
+.goal-task-row.task-done .goal-rtitle{ text-decoration: line-through; opacity: 0.55; }
+.goal-rmeta{ display:flex; gap:4px; align-items:center; color: var(--text-muted); font-size:11px; flex-shrink:0; }
+.goal-task-delete{ opacity:0; background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 4px; border-radius:4px; transition: opacity .15s; }
+.goal-task-row:hover .goal-task-delete{ opacity:0.6; }
+.goal-task-delete:hover{ opacity:1 !important; color: rgba(248,113,113,.95); }
 
 /* Condo detail */
 .condo-shell{ max-width: 1120px; margin: 0 auto; display:flex; flex-direction:column; gap: 12px; }
