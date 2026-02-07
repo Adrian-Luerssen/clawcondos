@@ -2086,9 +2086,9 @@
         updateStatsGrid();
         updateUncategorizedCount();
 
-        // If user is viewing a specific goal, refresh that view too
+        // If user is viewing a specific goal, refresh task pane without nuking the chat
         if (state.currentView === 'goal' && state.currentGoalOpenId) {
-          renderGoalView();
+          renderGoalPane();
         }
 
         if (state.pendingRouteGoalId) {
@@ -2357,13 +2357,12 @@
           : condoErrors > 0 ? `<span class=\"badge error\">${condoErrors}</span>` : '';
         const activeCondo = state.currentCondoId === condo.id ? 'active' : '';
 
-        // Only active + started goals should be displayed in sidebar
-        const pendingGoalsCount = Array.from(condo.goals.values()).filter(g => !isGoalCompleted(g) && !isGoalDropped(g) && Array.isArray(g.sessions) && g.sessions.length > 0).length;
+        const pendingGoalsCount = Array.from(condo.goals.values()).filter(g => !isGoalCompleted(g) && !isGoalDropped(g)).length;
 
         // Default collapse condos that have "nothing happening" unless user explicitly expanded them before.
         // Heuristic: no pending goals OR no sessions attached to any pending goal and no unassigned sessions.
         if (state.expandedCondos[condo.id] === undefined) {
-          const pendingGoals = Array.from(condo.goals.values()).filter(g => !isGoalCompleted(g) && !isGoalDropped(g) && Array.isArray(g.sessions) && g.sessions.length > 0);
+          const pendingGoals = Array.from(condo.goals.values()).filter(g => !isGoalCompleted(g) && !isGoalDropped(g));
           const pendingGoalsSessionsCount = pendingGoals.reduce((acc, g) => acc + (Array.isArray(g.sessions) ? g.sessions.length : 0), 0);
           const hasAnySessions = (condo.sessions?.length || 0) > 0;
           const shouldCollapse = pendingGoals.length === 0 || (!hasAnySessions && pendingGoalsSessionsCount === 0);
@@ -2410,7 +2409,7 @@
 
 
     function renderCondoGoals(condo, sessionToGoal, goalById) {
-      const goals = Array.from(condo.goals.values()).filter(g => !isGoalCompleted(g) && !isGoalDropped(g) && Array.isArray(g.sessions) && g.sessions.length > 0 && matchesGoalSearch(g));
+      const goals = Array.from(condo.goals.values()).filter(g => !isGoalCompleted(g) && !isGoalDropped(g) && matchesGoalSearch(g));
       const goalRows = [];
 
       for (const goal of goals) {
@@ -2427,7 +2426,6 @@
           <a class="goal-item ${isActive}" href="${escapeHtml(goalHref(goal.id))}" onclick="return handleGoalLinkClick(event, '${escapeHtml(goal.id)}')">
             <div class="goal-item-row">
               ${dot}
-              <div class="goal-checkbox"></div>
               <span class="goal-name" title="${escapeHtml(nextTask || '')}">${escapeHtml(goal.title || 'Untitled goal')}</span>
               <span class="goal-count">${sessionsForGoal.length}</span>
               <span class="goal-add" title="New session for this goal" onclick="event.preventDefault(); event.stopPropagation(); openNewSession('${escapeHtml(condo.id)}','${escapeHtml(goal.id)}')">+</span>
@@ -3233,8 +3231,7 @@
             const badge = t.blocked ? 'blocked' : (t.stage || (t.done ? 'done' : 'backlog'));
             const title = t.text || t.title || '';
             return `
-              <div class="goal-task-row ${doneClass}" onclick="toggleGoalTask('${id}')">
-                <input type="checkbox" ${checked} onclick="event.stopPropagation(); toggleGoalTask('${id}')">
+              <div class="goal-task-row ${doneClass}">
                 <div class="goal-badge ${escapeHtml(badge)}" onclick="event.stopPropagation(); cycleTaskStage('${id}')" title="Stage: ${escapeHtml(badge)} (click to cycle)"></div>
                 <div class="goal-rtitle">${escapeHtml(title)}</div>
                 <div class="goal-rmeta">
@@ -3670,9 +3667,9 @@
           try { renderGoals(); } catch (e) { console.error('renderGoals error:', e); }
           try { renderGoalsGrid(); } catch (e) { console.error('renderGoalsGrid error:', e); }
 
-          // Avoid nuking chat contents when we're in goal view; prefer lighter refresh.
-          if (!(opts.skipGoalViewRerender) && state.currentView === 'goal' && state.currentGoalOpenId === goalId) {
-            try { renderGoalView(); } catch (e) { console.error('renderGoalView error:', e); }
+          // When already in goal view, only refresh the task pane — don't nuke the chat.
+          if (state.currentView === 'goal' && state.currentGoalOpenId === goalId) {
+            try { renderGoalPane(); } catch (e) { console.error('renderGoalPane error:', e); }
           } else {
             try { renderDetailPanel(); } catch (e) { console.error('renderDetailPanel error:', e); }
           }
