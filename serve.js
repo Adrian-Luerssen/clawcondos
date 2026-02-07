@@ -773,7 +773,7 @@ const server = createServer(async (req, res) => {
   if (!existsSync(filePath)) {
     // Fallback to repo-root for specific asset directories only.
     // Blocks access to serve.js, package.json, docs/, tests/, CLAUDE.md, etc.
-    const allowedRootPrefixes = ['js/', 'styles/', 'lib/', 'media/'];
+    const allowedRootPrefixes = ['js/', 'styles/', 'lib/', 'media/', 'landing-prototypes/'];
     if (!allowedRootPrefixes.some(p => rel.startsWith(p))) {
       res.writeHead(404);
       res.end('Not Found');

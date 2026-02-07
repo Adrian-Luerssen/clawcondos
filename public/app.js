@@ -3382,10 +3382,16 @@ function initAutoArchiveUI() {
           const ago = f.addedAtMs ? timeAgo(f.addedAtMs) : '';
           const escapedPath = escapeHtml(f.path.replace(/'/g, "\\'"));
           const escapedGoalId = escapeHtml((goal.id || '').replace(/'/g, "\\'"));
+          // Make HTML files in landing-prototypes clickable
+          const isPreviewable = ext === 'html' && f.path.startsWith('landing-prototypes/');
+          const fileUrl = isPreviewable ? '/' + f.path : null;
+          const nameHtml = isPreviewable 
+            ? '<a href="' + escapeHtml(fileUrl) + '" target="_blank" class="goal-tracked-file-link">' + escapeHtml(name) + '</a>'
+            : escapeHtml(name);
           html += '<div class="goal-tracked-file">' +
             '<span class="goal-tracked-file-icon">' + icon + '</span>' +
             '<div class="goal-tracked-file-info">' +
-              '<span class="goal-tracked-file-name">' + escapeHtml(name) + '</span>' +
+              '<span class="goal-tracked-file-name">' + nameHtml + '</span>' +
               '<span class="goal-tracked-file-path">' + escapeHtml(f.path) + '</span>' +
             '</div>' +
             '<span class="goal-tracked-file-source" title="' + escapeHtml(f.source || 'unknown') + '">' + sourceIcon + '</span>' +
