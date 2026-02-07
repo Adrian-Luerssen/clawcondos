@@ -1,0 +1,1390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClawCondos — Mission Control for AI Agents</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-deep: #0a0a0a;
+      --bg-surface: #141414;
+      --bg-elevated: #1a1a1a;
+      --concrete: #2a2a28;
+      --concrete-light: #3d3d3a;
+      --text-primary: #f5f5f0;
+      --text-muted: #8a8a80;
+      --accent-amber: #ff9f1c;
+      --accent-amber-glow: #ff9f1c40;
+      --accent-green: #4ade80;
+      --accent-blue: #60a5fa;
+      --accent-purple: #c084fc;
+      --grain-opacity: 0.03;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'Space Mono', monospace;
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Grain overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      opacity: var(--grain-opacity);
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    /* Typography */
+    .serif {
+      font-family: 'Instrument Serif', Georgia, serif;
+    }
+
+    .mono {
+      font-family: 'Space Mono', monospace;
+    }
+
+    /* Layout */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+
+    /* Navigation */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 1.5rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(to bottom, var(--bg-deep) 0%, transparent 100%);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--accent-amber);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: var(--bg-deep);
+      font-size: 0.75rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.875rem;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--text-primary);
+    }
+
+    .nav-cta {
+      background: var(--text-primary);
+      color: var(--bg-deep);
+      padding: 0.625rem 1.25rem;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 700;
+      transition: all 0.2s;
+    }
+
+    .nav-cta:hover {
+      background: var(--accent-amber);
+      transform: translateY(-1px);
+    }
+
+    /* Hero Section */
+    .hero {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+      padding: 8rem 2rem 4rem;
+      position: relative;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 60%;
+      height: 100%;
+      background: radial-gradient(ellipse at 80% 30%, var(--accent-amber-glow) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    .hero-content {
+      max-width: 600px;
+      z-index: 1;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--concrete);
+      padding: 0.5rem 1rem;
+      border-radius: 2rem;
+      font-size: 0.75rem;
+      margin-bottom: 2rem;
+      animation: fadeSlideIn 0.8s ease-out;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent-green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .hero h1 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(3rem, 8vw, 5.5rem);
+      font-weight: 400;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin-bottom: 1.5rem;
+      animation: fadeSlideIn 0.8s ease-out 0.1s both;
+    }
+
+    .hero h1 em {
+      font-style: italic;
+      color: var(--accent-amber);
+    }
+
+    .hero-description {
+      font-size: 1.125rem;
+      color: var(--text-muted);
+      margin-bottom: 2.5rem;
+      max-width: 480px;
+      animation: fadeSlideIn 0.8s ease-out 0.2s both;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 1rem;
+      animation: fadeSlideIn 0.8s ease-out 0.3s both;
+    }
+
+    .btn-primary {
+      background: var(--accent-amber);
+      color: var(--bg-deep);
+      padding: 1rem 2rem;
+      border: none;
+      border-radius: 4px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.875rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px var(--accent-amber-glow);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-primary);
+      padding: 1rem 2rem;
+      border: 1px solid var(--concrete-light);
+      border-radius: 4px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.875rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--text-muted);
+      background: var(--bg-surface);
+    }
+
+    @keyframes fadeSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Isometric Visualization */
+    .hero-visual {
+      position: relative;
+      height: 600px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
+    }
+
+    .iso-scene {
+      transform: rotateX(60deg) rotateZ(-45deg);
+      transform-style: preserve-3d;
+      position: relative;
+    }
+
+    .iso-block {
+      position: absolute;
+      transform-style: preserve-3d;
+      animation: floatIn 1s ease-out both;
+    }
+
+    .iso-block .top {
+      position: absolute;
+      transform: translateZ(var(--height));
+      background: var(--top-color);
+    }
+
+    .iso-block .front {
+      position: absolute;
+      transform: rotateX(-90deg);
+      transform-origin: bottom;
+      background: var(--front-color);
+      height: var(--height);
+    }
+
+    .iso-block .right {
+      position: absolute;
+      transform: rotateY(90deg) rotateX(-90deg);
+      transform-origin: bottom left;
+      background: var(--right-color);
+      height: var(--height);
+    }
+
+    /* Condo block (large base) */
+    .condo-block {
+      --height: 60px;
+      --top-color: linear-gradient(135deg, #3d3d3a 0%, #2a2a28 100%);
+      --front-color: linear-gradient(to bottom, #252523 0%, #1a1a18 100%);
+      --right-color: linear-gradient(to bottom, #1f1f1d 0%, #141412 100%);
+      animation-delay: 0.2s;
+    }
+
+    .condo-block .top,
+    .condo-block .front,
+    .condo-block .right {
+      width: 200px;
+    }
+
+    .condo-block .top {
+      height: 200px;
+      border: 2px solid var(--concrete-light);
+    }
+
+    .condo-block .front {
+      width: 200px;
+      border-left: 2px solid var(--concrete-light);
+      border-bottom: 2px solid var(--concrete-light);
+    }
+
+    .condo-block .right {
+      width: 200px;
+      border-right: 2px solid var(--concrete-light);
+      border-bottom: 2px solid var(--concrete-light);
+    }
+
+    /* Goal blocks (medium, on top of condo) */
+    .goal-block {
+      --height: 50px;
+      --top-color: linear-gradient(135deg, var(--accent-amber) 0%, #e88f00 100%);
+      --front-color: linear-gradient(to bottom, #cc7a00 0%, #995c00 100%);
+      --right-color: linear-gradient(to bottom, #b36b00 0%, #804d00 100%);
+    }
+
+    .goal-block .top,
+    .goal-block .front,
+    .goal-block .right {
+      width: 80px;
+    }
+
+    .goal-block .top {
+      height: 80px;
+    }
+
+    .goal-block:nth-child(2) {
+      left: 10px;
+      top: 10px;
+      animation-delay: 0.4s;
+    }
+
+    .goal-block:nth-child(3) {
+      left: 100px;
+      top: 10px;
+      animation-delay: 0.5s;
+    }
+
+    .goal-block:nth-child(4) {
+      left: 10px;
+      top: 100px;
+      animation-delay: 0.6s;
+    }
+
+    /* Session blocks (small, stacked) */
+    .session-block {
+      --height: 25px;
+      --top-color: linear-gradient(135deg, var(--accent-green) 0%, #22c55e 100%);
+      --front-color: linear-gradient(to bottom, #16a34a 0%, #15803d 100%);
+      --right-color: linear-gradient(to bottom, #14532d 0%, #166534 100%);
+    }
+
+    .session-block .top,
+    .session-block .front,
+    .session-block .right {
+      width: 30px;
+    }
+
+    .session-block .top {
+      height: 30px;
+    }
+
+    .session-block:nth-child(5) {
+      left: 20px;
+      top: 20px;
+      animation-delay: 0.8s;
+    }
+
+    .session-block:nth-child(6) {
+      left: 45px;
+      top: 20px;
+      animation-delay: 0.9s;
+    }
+
+    .session-block:nth-child(7) {
+      left: 20px;
+      top: 45px;
+      animation-delay: 1s;
+    }
+
+    @keyframes floatIn {
+      from {
+        opacity: 0;
+        transform: translateZ(50px);
+      }
+      to {
+        opacity: 1;
+        transform: translateZ(0);
+      }
+    }
+
+    /* Block labels */
+    .block-label {
+      position: absolute;
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .condo-label {
+      bottom: -40px;
+      left: 50%;
+      transform: translateX(-50%) rotateZ(45deg) rotateX(-60deg);
+    }
+
+    /* Terminal Preview */
+    .terminal-preview {
+      position: absolute;
+      top: 50%;
+      left: -100px;
+      transform: translateY(-50%) rotateZ(45deg) rotateX(-60deg);
+      background: var(--bg-surface);
+      border: 1px solid var(--concrete);
+      border-radius: 8px;
+      width: 280px;
+      overflow: hidden;
+      animation: fadeSlideIn 1s ease-out 1.2s both;
+    }
+
+    .terminal-header {
+      background: var(--concrete);
+      padding: 0.5rem 0.75rem;
+      display: flex;
+      gap: 0.375rem;
+    }
+
+    .terminal-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--bg-elevated);
+    }
+
+    .terminal-dot:nth-child(1) { background: #ff5f56; }
+    .terminal-dot:nth-child(2) { background: #ffbd2e; }
+    .terminal-dot:nth-child(3) { background: #27ca40; }
+
+    .terminal-body {
+      padding: 1rem;
+      font-size: 0.7rem;
+      line-height: 1.8;
+    }
+
+    .terminal-line {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .terminal-prompt {
+      color: var(--accent-amber);
+    }
+
+    .terminal-cmd {
+      color: var(--text-primary);
+    }
+
+    .terminal-output {
+      color: var(--text-muted);
+      margin-left: 1rem;
+    }
+
+    /* Concept Section */
+    .concept {
+      padding: 8rem 2rem;
+      background: var(--bg-surface);
+      position: relative;
+    }
+
+    .concept::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(to right, transparent, var(--concrete-light), transparent);
+    }
+
+    .concept-header {
+      text-align: center;
+      max-width: 800px;
+      margin: 0 auto 6rem;
+    }
+
+    .section-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: var(--accent-amber);
+      margin-bottom: 1rem;
+    }
+
+    .concept-header h2 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 400;
+      line-height: 1.2;
+      margin-bottom: 1.5rem;
+    }
+
+    .concept-header p {
+      color: var(--text-muted);
+      font-size: 1.125rem;
+    }
+
+    /* Hierarchy Flow */
+    .hierarchy-flow {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .hierarchy-flow::before {
+      content: '';
+      position: absolute;
+      top: 80px;
+      left: 15%;
+      right: 15%;
+      height: 2px;
+      background: linear-gradient(to right, var(--accent-amber), var(--accent-blue), var(--accent-green));
+      opacity: 0.3;
+    }
+
+    .hierarchy-item {
+      text-align: center;
+      padding: 2rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--concrete);
+      border-radius: 8px;
+      position: relative;
+      transition: all 0.3s;
+    }
+
+    .hierarchy-item:hover {
+      border-color: var(--accent-amber);
+      transform: translateY(-4px);
+    }
+
+    .hierarchy-icon {
+      width: 100px;
+      height: 100px;
+      margin: 0 auto 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .hierarchy-item:nth-child(1) .hierarchy-icon {
+      background: linear-gradient(135deg, var(--concrete) 0%, var(--bg-surface) 100%);
+      border-radius: 8px;
+      border: 2px solid var(--concrete-light);
+    }
+
+    .hierarchy-item:nth-child(2) .hierarchy-icon {
+      background: linear-gradient(135deg, var(--accent-amber) 0%, #cc7a00 100%);
+      border-radius: 8px;
+    }
+
+    .hierarchy-item:nth-child(3) .hierarchy-icon {
+      background: linear-gradient(135deg, var(--accent-green) 0%, #16a34a 100%);
+      border-radius: 50%;
+    }
+
+    .hierarchy-icon svg {
+      width: 40px;
+      height: 40px;
+      stroke: var(--text-primary);
+      stroke-width: 1.5;
+      fill: none;
+    }
+
+    .hierarchy-item:nth-child(2) .hierarchy-icon svg,
+    .hierarchy-item:nth-child(3) .hierarchy-icon svg {
+      stroke: var(--bg-deep);
+    }
+
+    .hierarchy-item h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+
+    .hierarchy-item .count {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    .hierarchy-item p {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      line-height: 1.7;
+    }
+
+    .arrow-connector {
+      position: absolute;
+      top: 80px;
+      right: -1.5rem;
+      color: var(--accent-amber);
+      font-size: 1.5rem;
+      z-index: 2;
+    }
+
+    .hierarchy-item:last-child .arrow-connector {
+      display: none;
+    }
+
+    /* Features Grid */
+    .features {
+      padding: 8rem 2rem;
+      background: var(--bg-deep);
+    }
+
+    .features-header {
+      max-width: 600px;
+      margin-bottom: 4rem;
+    }
+
+    .features-header h2 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 400;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+    }
+
+    .features-header p {
+      color: var(--text-muted);
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .feature-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--concrete);
+      border-radius: 8px;
+      padding: 2rem;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--card-accent, var(--accent-amber));
+      transform: scaleX(0);
+      transition: transform 0.3s;
+    }
+
+    .feature-card:hover::before {
+      transform: scaleX(1);
+    }
+
+    .feature-card:hover {
+      border-color: var(--concrete-light);
+      transform: translateY(-2px);
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--bg-elevated);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+      color: var(--card-accent, var(--accent-amber));
+    }
+
+    .feature-card:nth-child(2) { --card-accent: var(--accent-blue); }
+    .feature-card:nth-child(3) { --card-accent: var(--accent-green); }
+    .feature-card:nth-child(4) { --card-accent: var(--accent-purple); }
+    .feature-card:nth-child(5) { --card-accent: var(--accent-amber); }
+    .feature-card:nth-child(6) { --card-accent: var(--accent-blue); }
+
+    .feature-card h3 {
+      font-size: 1.125rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      letter-spacing: -0.02em;
+    }
+
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      line-height: 1.7;
+    }
+
+    /* Code Preview Section */
+    .preview {
+      padding: 8rem 2rem;
+      background: var(--bg-surface);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .preview::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(to right, transparent, var(--concrete-light), transparent);
+    }
+
+    .preview-container {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 4rem;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .preview-content h2 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 400;
+      line-height: 1.2;
+      margin-bottom: 1.5rem;
+    }
+
+    .preview-content p {
+      color: var(--text-muted);
+      font-size: 1rem;
+      margin-bottom: 2rem;
+      line-height: 1.8;
+    }
+
+    .preview-code {
+      background: var(--bg-deep);
+      border: 1px solid var(--concrete);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .code-header {
+      background: var(--concrete);
+      padding: 0.75rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .code-tabs {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .code-tab {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .code-tab.active {
+      color: var(--text-primary);
+      background: var(--bg-elevated);
+    }
+
+    .code-body {
+      padding: 1.5rem;
+      font-size: 0.8rem;
+      line-height: 1.8;
+      overflow-x: auto;
+    }
+
+    .code-body pre {
+      margin: 0;
+    }
+
+    .code-comment { color: var(--text-muted); }
+    .code-keyword { color: var(--accent-purple); }
+    .code-string { color: var(--accent-green); }
+    .code-property { color: var(--accent-blue); }
+    .code-value { color: var(--accent-amber); }
+
+    /* CTA Section */
+    .cta {
+      padding: 10rem 2rem;
+      text-align: center;
+      position: relative;
+      background: var(--bg-deep);
+    }
+
+    .cta::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, var(--accent-amber-glow) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .cta-content {
+      position: relative;
+      z-index: 1;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    .cta h2 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(2.5rem, 6vw, 4rem);
+      font-weight: 400;
+      line-height: 1.1;
+      margin-bottom: 1.5rem;
+    }
+
+    .cta h2 em {
+      font-style: italic;
+      color: var(--accent-amber);
+    }
+
+    .cta p {
+      color: var(--text-muted);
+      font-size: 1.125rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .cta-actions {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+    }
+
+    /* Footer */
+    footer {
+      padding: 4rem 2rem;
+      border-top: 1px solid var(--concrete);
+      background: var(--bg-deep);
+    }
+
+    .footer-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .footer-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 700;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.875rem;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover {
+      color: var(--text-primary);
+    }
+
+    .footer-copy {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .hero {
+        grid-template-columns: 1fr;
+        text-align: center;
+        padding-top: 10rem;
+      }
+
+      .hero-content {
+        max-width: 100%;
+      }
+
+      .hero-description {
+        max-width: 100%;
+      }
+
+      .hero-actions {
+        justify-content: center;
+      }
+
+      .hero-visual {
+        height: 400px;
+        margin-top: -2rem;
+      }
+
+      .terminal-preview {
+        display: none;
+      }
+
+      .preview-container {
+        grid-template-columns: 1fr;
+      }
+
+      .hierarchy-flow::before {
+        display: none;
+      }
+    }
+
+    @media (max-width: 768px) {
+      nav {
+        padding: 1rem;
+      }
+
+      .nav-links {
+        display: none;
+      }
+
+      .hierarchy-flow {
+        grid-template-columns: 1fr;
+      }
+
+      .arrow-connector {
+        display: none;
+      }
+
+      .footer-content {
+        flex-direction: column;
+        gap: 2rem;
+        text-align: center;
+      }
+
+      .hero-actions {
+        flex-direction: column;
+      }
+
+      .cta-actions {
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+
+    /* Scroll animations */
+    .reveal {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: all 0.8s ease-out;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav>
+    <div class="logo">
+      <div class="logo-icon">CC</div>
+      <span>ClawCondos</span>
+    </div>
+    <ul class="nav-links">
+      <li><a href="#concept">Concept</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#docs">Docs</a></li>
+    </ul>
+    <a href="#start" class="nav-cta">Get Started</a>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero container">
+    <div class="hero-content">
+      <div class="status-badge">
+        <span class="status-dot"></span>
+        <span>Agents running in 847 condos</span>
+      </div>
+      <h1>Mission Control for <em>AI Agents</em></h1>
+      <p class="hero-description">
+        Organize autonomous work into structured spaces. Condos hold goals. 
+        Goals spawn sessions. Sessions get things done.
+      </p>
+      <div class="hero-actions">
+        <a href="#start" class="btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          Deploy Now
+        </a>
+        <a href="#docs" class="btn-secondary">Read the Docs</a>
+      </div>
+    </div>
+
+    <div class="hero-visual">
+      <div class="iso-scene">
+        <!-- Condo (base block) -->
+        <div class="iso-block condo-block">
+          <div class="top"></div>
+          <div class="front"></div>
+          <div class="right"></div>
+        </div>
+
+        <!-- Goals (amber blocks) -->
+        <div class="iso-block goal-block" style="left: 15px; top: 15px;">
+          <div class="top"></div>
+          <div class="front"></div>
+          <div class="right"></div>
+        </div>
+        <div class="iso-block goal-block" style="left: 105px; top: 15px;">
+          <div class="top"></div>
+          <div class="front"></div>
+          <div class="right"></div>
+        </div>
+        <div class="iso-block goal-block" style="left: 15px; top: 105px;">
+          <div class="top"></div>
+          <div class="front"></div>
+          <div class="right"></div>
+        </div>
+
+        <!-- Sessions (green blocks) -->
+        <div class="iso-block session-block" style="left: 25px; top: 25px;">
+          <div class="top"></div>
+          <div class="front"></div>
+          <div class="right"></div>
+        </div>
+        <div class="iso-block session-block" style="left: 50px; top: 25px;">
+          <div class="top"></div>
+          <div class="front"></div>
+          <div class="right"></div>
+        </div>
+        <div class="iso-block session-block" style="left: 25px; top: 50px;">
+          <div class="top"></div>
+          <div class="front"></div>
+          <div class="right"></div>
+        </div>
+      </div>
+
+      <!-- Terminal Preview -->
+      <div class="terminal-preview">
+        <div class="terminal-header">
+          <span class="terminal-dot"></span>
+          <span class="terminal-dot"></span>
+          <span class="terminal-dot"></span>
+        </div>
+        <div class="terminal-body">
+          <div class="terminal-line">
+            <span class="terminal-prompt">$</span>
+            <span class="terminal-cmd">claw goal create</span>
+          </div>
+          <div class="terminal-output">→ Goal "Deploy v2.0" created</div>
+          <div class="terminal-line">
+            <span class="terminal-prompt">$</span>
+            <span class="terminal-cmd">claw session spawn</span>
+          </div>
+          <div class="terminal-output">→ Agent online ✓</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Concept Section -->
+  <section class="concept" id="concept">
+    <div class="concept-header reveal">
+      <p class="section-label">The Architecture</p>
+      <h2>Three layers of structured autonomy</h2>
+      <p>A hierarchical system that gives AI agents clear boundaries and purpose. No chaos. Pure execution.</p>
+    </div>
+
+    <div class="hierarchy-flow container">
+      <div class="hierarchy-item reveal">
+        <div class="hierarchy-icon">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <line x1="3" y1="9" x2="21" y2="9"/>
+            <line x1="9" y1="21" x2="9" y2="9"/>
+          </svg>
+        </div>
+        <h3>Condos</h3>
+        <p class="count">Workspaces</p>
+        <p>Isolated environments where related work lives. Each condo has its own context, files, and purpose.</p>
+        <span class="arrow-connector">→</span>
+      </div>
+
+      <div class="hierarchy-item reveal">
+        <div class="hierarchy-icon">
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+          </svg>
+        </div>
+        <h3>Goals</h3>
+        <p class="count">Objectives</p>
+        <p>Discrete outcomes to achieve. Goals have status, priority, tasks, and deadlines. They belong to condos.</p>
+        <span class="arrow-connector">→</span>
+      </div>
+
+      <div class="hierarchy-item reveal">
+        <div class="hierarchy-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <h3>Sessions</h3>
+        <p class="count">Conversations</p>
+        <p>Active agent threads doing work. Sessions execute goals, report progress, and spawn subagents.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="features-header reveal">
+        <p class="section-label">Capabilities</p>
+        <h2>Everything agents need to stay on track</h2>
+        <p>Built for AI-native workflows where context is currency and autonomy needs guardrails.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card reveal">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <h3>Hierarchical Context</h3>
+          <p>Goals inherit condo context. Sessions inherit goal context. Every agent knows exactly what it's working on and why.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </div>
+          <h3>Real-time Status</h3>
+          <p>Live dashboards show active sessions, goal progress, and system health. Know what every agent is doing at a glance.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <h3>Subagent Spawning</h3>
+          <p>Sessions can spawn child sessions for parallel work. Parent agents stay informed. No orphaned processes.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          </div>
+          <h3>File-backed State</h3>
+          <p>All data persists as markdown files. Version control friendly. Grep-able. No database lock-in.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <h3>Scoped Permissions</h3>
+          <p>Control what agents can access per condo. Sensitive projects stay isolated. Blast radius contained.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </div>
+          <h3>API & CLI</h3>
+          <p>Full REST API plus command-line tools. Integrate with existing workflows. Automate everything.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Code Preview Section -->
+  <section class="preview" id="docs">
+    <div class="preview-container container">
+      <div class="preview-content reveal">
+        <p class="section-label">Simple Integration</p>
+        <h2>Designed for agent-first workflows</h2>
+        <p>
+          ClawCondos exposes clean APIs that agents can call directly. 
+          Create goals, update progress, spawn sessions — all through 
+          straightforward JSON endpoints or the CLI.
+        </p>
+        <a href="#" class="btn-secondary">View API Reference</a>
+      </div>
+
+      <div class="preview-code reveal">
+        <div class="code-header">
+          <div class="code-tabs">
+            <span class="code-tab active">goal_update.json</span>
+            <span class="code-tab">session.py</span>
+          </div>
+        </div>
+        <div class="code-body">
+<pre><code><span class="code-comment">// Update goal progress from an active session</span>
+{
+  <span class="code-property">"action"</span>: <span class="code-string">"goal_update"</span>,
+  <span class="code-property">"goalId"</span>: <span class="code-string">"goal_abc123"</span>,
+  <span class="code-property">"status"</span>: <span class="code-string">"in-progress"</span>,
+  <span class="code-property">"summary"</span>: <span class="code-string">"Completed API integration"</span>,
+  <span class="code-property">"nextTask"</span>: <span class="code-string">"Writing test coverage"</span>,
+  <span class="code-property">"files"</span>: [
+    <span class="code-string">"src/api/client.ts"</span>,
+    <span class="code-string">"tests/api.test.ts"</span>
+  ]
+}</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta" id="start">
+    <div class="cta-content reveal">
+      <h2>Ready to give your agents a <em>home?</em></h2>
+      <p>ClawCondos runs locally or in the cloud. Deploy in minutes, not days.</p>
+      <div class="cta-actions">
+        <a href="#" class="btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+          Read the Docs
+        </a>
+        <a href="#" class="btn-secondary">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-content">
+      <div class="footer-logo">
+        <div class="logo-icon">CC</div>
+        <span>ClawCondos</span>
+      </div>
+      <ul class="footer-links">
+        <li><a href="#">Documentation</a></li>
+        <li><a href="#">GitHub</a></li>
+        <li><a href="#">API</a></li>
+        <li><a href="#">Blog</a></li>
+      </ul>
+      <p class="footer-copy">© 2026 OpenClaw. Built for agents, by agents.</p>
+    </div>
+  </footer>
+
+  <script>
+    // Scroll reveal animations
+    const revealElements = document.querySelectorAll('.reveal');
+    
+    const revealOnScroll = () => {
+      const windowHeight = window.innerHeight;
+      
+      revealElements.forEach(el => {
+        const elementTop = el.getBoundingClientRect().top;
+        const revealPoint = 100;
+        
+        if (elementTop < windowHeight - revealPoint) {
+          el.classList.add('visible');
+        }
+      });
+    };
+    
+    window.addEventListener('scroll', revealOnScroll);
+    window.addEventListener('load', revealOnScroll);
+
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          target.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+        }
+      });
+    });
+
+    // Code tab switching (demo functionality)
+    const codeTabs = document.querySelectorAll('.code-tab');
+    codeTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        codeTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+      });
+    });
+
+    // Animate counter in status badge
+    const statusBadge = document.querySelector('.status-badge span:last-child');
+    if (statusBadge) {
+      let count = 847;
+      setInterval(() => {
+        count += Math.floor(Math.random() * 3) - 1;
+        count = Math.max(800, Math.min(900, count));
+        statusBadge.textContent = `Agents running in ${count} condos`;
+      }, 3000);
+    }
+  </script>
+</body>
+</html>
