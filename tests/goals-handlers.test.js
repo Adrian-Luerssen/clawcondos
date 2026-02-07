@@ -716,4 +716,234 @@ describe('GoalHandlers', () => {
       expect(r4.getResult().payload.goalId).toBeNull();
     });
   });
+
+  describe('goals.addFiles', () => {
+    it('adds files to a goal', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      const r2 = makeResponder();
+      handlers['goals.addFiles']({
+        params: { goalId, files: ['src/index.js', 'src/app.css'] },
+        respond: r2.respond,
+      });
+      expect(r2.getResult().ok).toBe(true);
+      expect(r2.getResult().payload.added).toBe(2);
+      expect(r2.getResult().payload.files).toHaveLength(2);
+      expect(r2.getResult().payload.files[0].path).toBe('src/index.js');
+      expect(r2.getResult().payload.files[1].path).toBe('src/app.css');
+    });
+
+    it('stores file metadata (source, addedAtMs)', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      const r2 = makeResponder();
+      handlers['goals.addFiles']({
+        params: { goalId, files: ['src/index.js'] },
+        respond: r2.respond,
+      });
+      const file = r2.getResult().payload.files[0];
+      expect(file.source).toBe('manual');
+      expect(file.addedAtMs).toBeTypeOf('number');
+      expect(file.taskId).toBeNull();
+      expect(file.sessionKey).toBeNull();
+    });
+
+    it('accepts object-format file entries', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      const r2 = makeResponder();
+      handlers['goals.addFiles']({
+        params: { goalId, files: [{ path: 'lib/utils.js' }] },
+        respond: r2.respond,
+      });
+      expect(r2.getResult().ok).toBe(true);
+      expect(r2.getResult().payload.files[0].path).toBe('lib/utils.js');
+    });
+
+    it('deduplicates files by path (replaces existing)', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      handlers['goals.addFiles']({
+        params: { goalId, files: ['src/index.js'] },
+        respond: makeResponder().respond,
+      });
+
+      const r2 = makeResponder();
+      handlers['goals.addFiles']({
+        params: { goalId, files: ['src/index.js'] },
+        respond: r2.respond,
+      });
+      expect(r2.getResult().payload.files).toHaveLength(1);
+    });
+
+    it('skips empty paths', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      const r2 = makeResponder();
+      handlers['goals.addFiles']({
+        params: { goalId, files: ['', '  ', 'valid.js'] },
+        respond: r2.respond,
+      });
+      expect(r2.getResult().payload.added).toBe(1);
+      expect(r2.getResult().payload.files).toHaveLength(1);
+    });
+
+    it('rejects missing goalId', () => {
+      const { respond, getResult } = makeResponder();
+      handlers['goals.addFiles']({ params: { files: ['a.js'] }, respond });
+      expect(getResult().ok).toBe(false);
+    });
+
+    it('rejects missing files array', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      const { respond, getResult } = makeResponder();
+      handlers['goals.addFiles']({ params: { goalId }, respond });
+      expect(getResult().ok).toBe(false);
+    });
+
+    it('rejects empty files array', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      const { respond, getResult } = makeResponder();
+      handlers['goals.addFiles']({ params: { goalId, files: [] }, respond });
+      expect(getResult().ok).toBe(false);
+    });
+
+    it('rejects nonexistent goal', () => {
+      const { respond, getResult } = makeResponder();
+      handlers['goals.addFiles']({
+        params: { goalId: 'goal_nope', files: ['a.js'] },
+        respond,
+      });
+      expect(getResult().ok).toBe(false);
+      expect(getResult().error.message).toBe('Goal not found');
+    });
+  });
+
+  describe('goals.removeFile', () => {
+    function createGoalWithFile(filePath = 'src/index.js') {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      handlers['goals.addFiles']({
+        params: { goalId, files: [filePath] },
+        respond: makeResponder().respond,
+      });
+      return goalId;
+    }
+
+    it('removes a file from a goal', () => {
+      const goalId = createGoalWithFile('src/index.js');
+
+      const r2 = makeResponder();
+      handlers['goals.removeFile']({
+        params: { goalId, path: 'src/index.js' },
+        respond: r2.respond,
+      });
+      expect(r2.getResult().ok).toBe(true);
+      expect(r2.getResult().payload.files).toHaveLength(0);
+    });
+
+    it('returns remaining files after removal', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      handlers['goals.addFiles']({
+        params: { goalId, files: ['a.js', 'b.js', 'c.js'] },
+        respond: makeResponder().respond,
+      });
+
+      const r2 = makeResponder();
+      handlers['goals.removeFile']({
+        params: { goalId, path: 'b.js' },
+        respond: r2.respond,
+      });
+      expect(r2.getResult().payload.files).toHaveLength(2);
+      expect(r2.getResult().payload.files.map(f => f.path)).toEqual(['a.js', 'c.js']);
+    });
+
+    it('rejects when file not found in goal', () => {
+      const goalId = createGoalWithFile('src/index.js');
+
+      const { respond, getResult } = makeResponder();
+      handlers['goals.removeFile']({
+        params: { goalId, path: 'nonexistent.js' },
+        respond,
+      });
+      expect(getResult().ok).toBe(false);
+      expect(getResult().error.message).toBe('File not found in goal');
+    });
+
+    it('rejects missing goalId', () => {
+      const { respond, getResult } = makeResponder();
+      handlers['goals.removeFile']({
+        params: { path: 'src/index.js' },
+        respond,
+      });
+      expect(getResult().ok).toBe(false);
+      expect(getResult().error.message).toBe('goalId and path are required');
+    });
+
+    it('rejects missing path', () => {
+      const r1 = makeResponder();
+      handlers['goals.create']({ params: { title: 'G' }, respond: r1.respond });
+      const goalId = r1.getResult().payload.goal.id;
+
+      const { respond, getResult } = makeResponder();
+      handlers['goals.removeFile']({
+        params: { goalId },
+        respond,
+      });
+      expect(getResult().ok).toBe(false);
+      expect(getResult().error.message).toBe('goalId and path are required');
+    });
+
+    it('rejects nonexistent goal', () => {
+      const { respond, getResult } = makeResponder();
+      handlers['goals.removeFile']({
+        params: { goalId: 'goal_nope', path: 'a.js' },
+        respond,
+      });
+      expect(getResult().ok).toBe(false);
+      expect(getResult().error.message).toBe('Goal not found');
+    });
+
+    it('updates goal timestamp on removal', () => {
+      const goalId = createGoalWithFile('src/index.js');
+
+      // Get goal before removal
+      const r1 = makeResponder();
+      handlers['goals.get']({ params: { id: goalId }, respond: r1.respond });
+      const beforeTs = r1.getResult().payload.goal.updatedAtMs;
+
+      // Small delay to ensure timestamp differs
+      const r2 = makeResponder();
+      handlers['goals.removeFile']({
+        params: { goalId, path: 'src/index.js' },
+        respond: r2.respond,
+      });
+      expect(r2.getResult().ok).toBe(true);
+
+      const r3 = makeResponder();
+      handlers['goals.get']({ params: { id: goalId }, respond: r3.respond });
+      expect(r3.getResult().payload.goal.updatedAtMs).toBeGreaterThanOrEqual(beforeTs);
+    });
+  });
 });

@@ -460,7 +460,13 @@
             <section class="goal-panel">
               <div class="panel-title">Attached sessions</div>
               <div class="goal-sessions" id="goalSessions"></div>
-              <div class="goal-sessions-hint">Tip: move sessions between condos from any session card’s ⛓ button.</div>
+              <div class="goal-sessions-hint">Tip: move sessions between condos from any session card's ⛓ button.</div>
+            </section>
+
+            <section class="goal-panel goal-files-panel">
+              <div class="panel-title">Tracked files</div>
+              <div class="goal-files" id="goalFiles"></div>
+              <div class="goal-sessions-hint">Files reported by agents via goal_update appear here.</div>
             </section>
           </div>
         </div>
@@ -1508,6 +1514,7 @@
           trackToolStart(runId, toolCallId, toolName, toolInput);
         } else if (eventData?.phase === 'end' || eventData?.phase === 'result' || eventData?.type === 'result') {
           trackToolEnd(runId, toolCallId, toolName, toolOutput);
+          if (GOAL_TOOL_NAMES.has(toolName)) debouncedGoalRefresh();
         }
       }
     }
@@ -2425,6 +2432,56 @@
           `;
         }).join('');
       }
+
+      // Tracked files — all values escaped via escapeHtml() before insertion
+      const files = Array.isArray(goal.files) ? goal.files : [];
+      const filesEl = document.getElementById('goalFiles');
+      if (filesEl) {
+        if (!files.length) {
+          filesEl.innerHTML = `<div class="empty-state">No files tracked yet.</div>`;
+        } else {
+          filesEl.innerHTML = files.map(f => {
+            const filePath = typeof f === 'string' ? f : (f.path || '');
+            const ext = filePath.split('.').pop().toLowerCase();
+            const source = (typeof f === 'object' && f.source) ? escapeHtml(f.source) : '';
+            const addedAt = (typeof f === 'object' && f.addedAtMs) ? timeAgo(f.addedAtMs) : '';
+            const meta = [source, addedAt].filter(Boolean).join(' \u00b7 ');
+            return `
+              <div class="goal-file-row">
+                <div class="goal-file-icon">${getFileIcon(ext)}</div>
+                <div class="goal-file-path" title="${escapeHtml(filePath)}">${escapeHtml(filePath)}</div>
+                <div class="goal-file-meta">${meta}</div>
+                <button class="goal-file-del" onclick="removeGoalFile('${escapeHtml(goal.id)}','${escapeHtml(filePath)}')" title="Remove">\u00d7</button>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+    }
+
+    function getFileIcon(ext) {
+      const map = {
+        js: '\ud83d\udcdc', ts: '\ud83d\udcdc', mjs: '\ud83d\udcdc', cjs: '\ud83d\udcdc',
+        json: '\ud83d\udccb', yaml: '\ud83d\udccb', yml: '\ud83d\udccb', toml: '\ud83d\udccb',
+        md: '\ud83d\uddd2\ufe0f', txt: '\ud83d\uddd2\ufe0f',
+        css: '\ud83c\udfa8', scss: '\ud83c\udfa8', less: '\ud83c\udfa8',
+        html: '\ud83c\udf10', htm: '\ud83c\udf10',
+        py: '\ud83d\udc0d', rb: '\ud83d\udc8e', go: '\ud83d\udce6', rs: '\u2699\ufe0f',
+        sh: '\u26a1', bash: '\u26a1',
+        png: '\ud83d\uddbc\ufe0f', jpg: '\ud83d\uddbc\ufe0f', svg: '\ud83d\uddbc\ufe0f', gif: '\ud83d\uddbc\ufe0f',
+        sql: '\ud83d\uddc4\ufe0f', db: '\ud83d\uddc4\ufe0f',
+      };
+      return map[ext] || '\ud83d\udcc4';
+    }
+
+    async function removeGoalFile(goalId, path) {
+      try {
+        await rpcCall('goals.removeFile', { goalId, path });
+        await loadGoals();
+        renderGoalView();
+      } catch (e) {
+        showToast('Failed to remove file', 'error');
+      }
     }
 
     async function toggleGoalDone() {
@@ -2604,6 +2661,16 @@
         btn.disabled = false;
         btn.textContent = 'Spawn Session';
       }
+    }
+
+    const GOAL_TOOL_NAMES = new Set(['goal_update', 'condo_bind', 'condo_create_goal', 'condo_add_task', 'condo_spawn_task']);
+    let goalRefreshTimer = null;
+    function debouncedGoalRefresh() {
+      clearTimeout(goalRefreshTimer);
+      goalRefreshTimer = setTimeout(async () => {
+        await loadGoals();
+        renderGoalView();
+      }, 500);
     }
 
     let goalSaveTimer = null;
@@ -3466,8 +3533,9 @@ Response format:
       // Clean up stale runs periodically (in case we missed 'done' events)
       cleanStaleRuns();
       
-      await loadSessions();
+      await Promise.all([loadSessions(), loadGoals()]);
       updateOverview();
+      renderGoalView();
     }
     
     function cleanStaleRuns() {

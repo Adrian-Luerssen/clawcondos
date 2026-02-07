@@ -85,6 +85,22 @@ Sessions are identified by structured keys:
 
 The frontend uses a single global `state` object. WebSocket events drive UI updates. No reactive framework - DOM manipulation is direct via `getElementById` and innerHTML.
 
+### Real-time goal refresh
+
+The frontend receives agent tool events via WebSocket (`{ stream: 'tool', data: { phase: 'end', name: '...' } }`). When `handleAgentEvent()` detects a goal-related tool completing, it triggers a debounced `loadGoals()` refresh (500ms debounce). This provides real-time visibility into task progress and file tracking without waiting for the 30s poll cycle.
+
+**Watched tool names** (`GOAL_TOOL_NAMES`): `goal_update`, `condo_bind`, `condo_create_goal`, `condo_add_task`, `condo_spawn_task`.
+
+**Refresh pipeline:** `debouncedGoalRefresh()` → (500ms) → `loadGoals()` → `renderGoalView()`. The 30s `refresh()` poll also calls `loadGoals()` as a fallback.
+
+### Tracked files
+
+Goals can have files attached via `goal.files[]`. Agents report files through the `goal_update` tool, and users can add files via `goals.addFiles` RPC. Each file entry contains `{ path, taskId, sessionKey, addedAtMs, source }`. The goal detail view displays tracked files in a full-width panel with file-type icons, monospace paths, metadata (source + relative time), and a remove button (calls `goals.removeFile` RPC).
+
+**Key functions:**
+- `getFileIcon(ext)` — maps file extension to emoji icon (JS/TS→📜, CSS→🎨, Python→🐍, etc.)
+- `removeGoalFile(goalId, path)` — calls `goals.removeFile` RPC, refreshes goals, re-renders view
+
 ### OpenClaw Plugin (clawcondos-goals)
 
 Goals, tasks, and session-goal mappings are managed by an OpenClaw plugin at `clawcondos/condo-management/`. The plugin registers gateway RPC methods that the frontend calls over WebSocket.
@@ -108,6 +124,7 @@ Goals, tasks, and session-goal mappings are managed by an OpenClaw plugin at `cl
 - Sessions: `goals.addSession`, `goals.removeSession`, `goals.sessionLookup`
 - Session-condo mapping: `goals.setSessionCondo`, `goals.getSessionCondo`, `goals.listSessionCondos`, `goals.removeSessionCondo`
 - Tasks: `goals.addTask`, `goals.updateTask`, `goals.deleteTask`
+- Files: `goals.addFiles`, `goals.removeFile`
 - Condos: `condos.create`, `condos.list`, `condos.get`, `condos.update`, `condos.delete`
 - Spawning: `goals.spawnTaskSession`
 - Classification: `classification.stats`, `classification.learningReport`, `classification.applyLearning`
@@ -137,6 +154,8 @@ Goals data lives in the plugin:
 Tests use **Vitest 2.0** in Node environment. Test files live in `tests/` and match `tests/**/*.test.js`.
 
 `tests/setup.js` provides browser API mocks (MockWebSocket, localStorage, document, fetch) since tests run in Node. `lib/` modules and `clawcondos/condo-management/lib/` modules have test coverage.
+
+`tests/frontend-goals.test.js` tests frontend pure functions extracted from `index.html` (since it has no module exports): `GOAL_TOOL_NAMES`, `getFileIcon()`, debounce behavior, tracked files rendering, `removeGoalFile()` RPC flow, and `timeAgo()`. These functions are replicated in the test file and validated against the same contracts.
 
 ## Code Conventions
 
