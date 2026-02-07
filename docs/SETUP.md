@@ -1,226 +1,292 @@
 # ClawCondos Setup Guide
 
-This guide covers deploying ClawCondos with a compatible backend.
+This guide covers deploying ClawCondos from quick local testing to production.
 
 ## Prerequisites
 
-- A static file server (Caddy, nginx, or any HTTP server)
-- A WebSocket backend implementing the [Backend API](BACKEND-API.md)
-- (Optional) Clawdbot Gateway for full agent functionality
+- **Node.js 18+** (for the server)
+- **OpenClaw Gateway** running (ClawCondos connects to it for sessions)
+- **Caddy** (recommended for production) or nginx
 
-## Quick Start (Development)
+## Quick Start (Try It Out)
 
-For local development without a full backend:
+Just want to see it? This takes 2 minutes:
 
 ```bash
-# Clone the repo
+# Clone and install
 git clone https://github.com/acastellana/clawcondos.git
 cd clawcondos
+npm install
 
-# Serve with Node.js
+# Start the server
 node serve.js
 ```
 
-Open `http://localhost:9000` — you'll see the dashboard (without backend, sessions won't load).
+Open http://localhost:9000. You'll see the dashboard, but sessions won't load without a backend.
 
-## Production Deployment
+### Connect to OpenClaw Gateway
 
-### Option 1: With Caddy (Recommended)
+If you have OpenClaw running locally:
 
-1. **Copy the example Caddyfile:**
-   ```bash
-   cp Caddyfile.example Caddyfile
-   ```
+```bash
+# Create config
+cp config.example.json config.json
 
-2. **Edit the Caddyfile:**
-   - Replace `YOUR_GATEWAY_TOKEN` with your gateway's bearer token
-   - Replace `/path/to/clawcondos` with the actual path
-   - Update port numbers as needed
-
-3. **Run Caddy:**
-   ```bash
-   caddy run --config Caddyfile
-   ```
-
-### Option 2: With nginx
-
-```nginx
-server {
-    listen 9000;
-    server_name localhost;
-    
-    # Static files
-    location / {
-        root /path/to/clawcondos;
-        try_files $uri $uri/ /index.html;
-    }
-    
-    # WebSocket proxy
-    location /ws {
-        proxy_pass http://localhost:18789;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Authorization "Bearer YOUR_TOKEN";
-    }
-    
-    # API proxy
-    location /api/gateway/ {
-        proxy_pass http://localhost:18789/;
-        proxy_set_header Authorization "Bearer YOUR_TOKEN";
-    }
-    
-    # Apps registry
-    location /api/apps {
-        alias /path/to/clawcondos/.registry/apps.json;
-    }
+# Edit config.json - set your gateway URL
+{
+  "gatewayWsUrl": "ws://localhost:18789/ws",
+  "gatewayHttpUrl": "http://localhost:18789"
 }
 ```
 
-### Option 3: Docker
+Restart the server and login with your gateway password.
 
-```dockerfile
-FROM caddy:2-alpine
+---
 
-COPY Caddyfile /etc/caddy/Caddyfile
-COPY . /srv/clawcondos
+## Production Setup (Recommended)
 
-EXPOSE 9000
-```
+For always-on deployment, use systemd + Caddy. This is what we actually run.
+
+### Step 1: Create the systemd service
 
 ```bash
-docker build -t clawcondos .
-docker run -p 9000:9000 clawcondos
+mkdir -p ~/.config/systemd/user
+
+cat > ~/.config/systemd/user/clawcondos.service << 'EOF'
+[Unit]
+Description=ClawCondos Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/clawcondos
+ExecStart=/usr/bin/node serve.js 9011
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+EnvironmentFile=%h/.config/clawcondos.env
+
+[Install]
+WantedBy=default.target
+EOF
 ```
 
-## Configuration
+Replace `/path/to/clawcondos` with your actual path.
 
-### Method 1: Inline Configuration
+### Step 2: Create the environment file
 
-Add before the closing `</body>` tag in `index.html`:
+```bash
+cat > ~/.config/clawcondos.env << 'EOF'
+# ClawCondos runtime configuration
+GATEWAY_HTTP_HOST=127.0.0.1
+GATEWAY_WS_URL=ws://127.0.0.1:18789/ws
+GATEWAY_AUTH=your-gateway-token-here
+EOF
 
-```html
-<script>
-  window.CLAWCONDOS_CONFIG = {
-    gatewayWsUrl: 'wss://your-gateway.example.com/',
-    branding: {
-      name: 'My Dashboard',
-      logo: '🎯'
+chmod 600 ~/.config/clawcondos.env
+```
+
+### Step 3: Enable and start
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable clawcondos
+systemctl --user start clawcondos
+
+# Check status
+systemctl --user status clawcondos
+
+# View logs
+journalctl --user -u clawcondos -f
+```
+
+### Step 4: Set up Caddy (reverse proxy)
+
+Caddy handles HTTPS and proxies requests:
+
+```bash
+# Install Caddy if needed
+sudo apt install caddy  # Debian/Ubuntu
+# or: brew install caddy  # macOS
+
+# Create Caddyfile
+cat > ~/Caddyfile << 'EOF'
+:9000 {
+    # WebSocket to ClawCondos server
+    handle /ws {
+        reverse_proxy localhost:9011
     }
-  };
-</script>
+
+    # API routes
+    handle /api/* {
+        reverse_proxy localhost:9011
+    }
+
+    # Media uploads
+    handle /media-upload/* {
+        reverse_proxy localhost:9011
+    }
+
+    # Gateway control UI (optional)
+    handle /control/* {
+        uri strip_prefix /control
+        reverse_proxy localhost:18789
+    }
+
+    # Static files and dashboard
+    handle {
+        reverse_proxy localhost:9011
+    }
+}
+EOF
+
+# Run Caddy
+caddy run --config ~/Caddyfile
 ```
 
-### Method 2: Config File
+For HTTPS with a domain, replace `:9000` with your domain:
 
-Create `config.json` from the example:
+```
+your-domain.com {
+    # same routes...
+}
+```
+
+### Step 5: Verify
+
+1. Open http://localhost:9000 (or your domain)
+2. Login with your gateway password
+3. You should see your sessions load
+
+---
+
+## Service Management
 
 ```bash
-cp config.example.json config.json
-# Edit config.json with your settings
+# Restart after code changes
+systemctl --user restart clawcondos
+
+# Stop
+systemctl --user stop clawcondos
+
+# View logs
+journalctl --user -u clawcondos -f
+
+# Disable auto-start
+systemctl --user disable clawcondos
 ```
 
-The config is loaded automatically at startup.
+---
 
-### Configuration Options
+## Configuration Options
+
+### config.json
+
+```json
+{
+  "gatewayWsUrl": "ws://localhost:18789/ws",
+  "gatewayHttpUrl": "http://localhost:18789",
+  "branding": {
+    "name": "ClawCondos",
+    "logo": "/media/clawcondos-logo.png"
+  },
+  "features": {
+    "showApps": true,
+    "showSubagents": true
+  },
+  "sessions": {
+    "pollInterval": 30000
+  }
+}
+```
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `gatewayWsUrl` | Auto-detect | WebSocket URL for backend |
 | `gatewayHttpUrl` | Auto-detect | HTTP URL for REST API |
-| `appsUrl` | `/api/apps` | URL to fetch apps registry |
 | `branding.name` | `"ClawCondos"` | Dashboard title |
-| `branding.logo` | `"🏙️"` | Logo emoji or image URL |
-| `sessions.pollInterval` | `30000` | Session refresh interval (ms) |
+| `branding.logo` | Crab logo | Logo image URL or emoji |
 | `features.showApps` | `true` | Show apps section |
 | `features.showSubagents` | `true` | Show sub-agents section |
+| `sessions.pollInterval` | `30000` | Session refresh interval (ms) |
 
-## Adding Apps
+### Environment Variables
 
-Apps are defined in `.registry/apps.json`:
+These override config.json:
 
-```json
-{
-  "apps": [
-    {
-      "id": "my-app",
-      "name": "My Application",
-      "description": "Description of my app",
-      "port": 8080,
-      "icon": "🎨",
-      "path": "/path/to/app",
-      "startCommand": "npm start"
-    }
-  ]
-}
-```
+| Variable | Description |
+|----------|-------------|
+| `GATEWAY_WS_URL` | WebSocket URL |
+| `GATEWAY_HTTP_HOST` | HTTP host for gateway |
+| `GATEWAY_AUTH` | Bearer token for gateway auth |
+| `PORT` | Server port (default: 9000) |
 
-Then add a proxy rule in your Caddyfile:
-
-```
-handle /my-app/* {
-    uri strip_prefix /my-app
-    reverse_proxy localhost:8080
-}
-handle /my-app {
-    redir /my-app/ permanent
-}
-```
-
-## Backend Setup
-
-### Using Clawdbot Gateway
-
-1. Install Clawdbot:
-   ```bash
-   npm i -g clawdbot
-   ```
-
-2. Start the gateway:
-   ```bash
-   clawdbot gateway start
-   ```
-
-3. Get the gateway token from your config and add it to ClawCondos's Caddyfile.
-
-See [Clawdbot documentation](https://docs.clawd.bot) for full setup.
-
-### Custom Backend
-
-Implement the [Backend API](BACKEND-API.md) protocol:
-- WebSocket endpoint at `/ws`
-- Required methods: `connect`, `chat.send`, `chat.history`, `chat.abort`, `sessions.list`
+---
 
 ## Troubleshooting
 
-### "Connection failed" error
+### "Connection failed" / "Connecting..." stuck
 
-- Check that your backend is running
-- Verify the WebSocket URL is correct
-- Check browser console for detailed errors
-- Ensure CORS/proxy is configured correctly
+1. Check gateway is running: `systemctl --user status clawdbot-gateway`
+2. Verify WebSocket URL in config matches gateway port
+3. Check browser console for detailed errors
+4. Verify GATEWAY_AUTH token is correct
 
 ### Sessions not loading
 
-- Verify the `sessions.list` endpoint is working
-- Check authentication token is valid
-- Look for errors in browser Network tab
+1. Check gateway logs: `journalctl --user -u clawdbot-gateway -f`
+2. Verify `sessions.list` method works (test via Control UI at /control)
+3. Check for 401 errors (bad token)
 
 ### Apps showing "offline"
 
-- Verify the app is running on its configured port
-- Check the proxy configuration
-- Ensure the app responds to HEAD requests
+1. Verify the app is running on its configured port
+2. Check Caddy is proxying the app route
+3. Test direct access: `curl http://localhost:<app-port>`
+
+### Service won't start
+
+```bash
+# Check for syntax errors
+node --check serve.js
+
+# Check env file exists and is readable
+cat ~/.config/clawcondos.env
+
+# Check permissions
+ls -la ~/.config/clawcondos.env
+```
+
+---
+
+## Docker (Alternative)
+
+```dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+
+EXPOSE 9000
+CMD ["node", "serve.js"]
+```
+
+```bash
+docker build -t clawcondos .
+docker run -p 9000:9000 \
+  -e GATEWAY_WS_URL=ws://host.docker.internal:18789/ws \
+  clawcondos
+```
+
+---
 
 ## Security Notes
 
-- **Never commit** `Caddyfile` or `config.json` with real tokens
-- By default, ClawCondos **does not** apply markdown/media rendering to **user** messages. To enable it, set:
-  - `features.formatUserMessages: true`
-- By default, ClawCondos **blocks external http(s) media embeds** (images/audio/links) for safety. To allow external embeds, set:
-  - `features.allowExternalMedia: true`
-
-Recommended: keep both flags `false` when viewing chats that may include untrusted user content.
-- Use environment variables for secrets in production
-- Consider using Tailscale or similar for secure internal access
-- The `.gitignore` excludes sensitive files by default
+- **Never commit** config files with real tokens to git
+- Use environment variables or `.env` files for secrets
+- The `.gitignore` excludes `config.json` and `.env` by default
+- Consider Tailscale or VPN for secure remote access
+- ClawCondos blocks external media embeds by default (see `features.allowExternalMedia`)

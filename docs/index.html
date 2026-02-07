@@ -14,7 +14,6 @@
       --bg-card: #1a1e24;
       --bg-elevated: #252a33;
       --border: #2a2f38;
-      --border-glow: rgba(96, 165, 250, 0.25);
       --text-primary: #f0f3f6;
       --text-secondary: #9ca3af;
       --text-muted: #6b7280;
@@ -28,15 +27,8 @@
       --accent-cyan: #22d3ee;
     }
 
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
 
     body {
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -47,49 +39,37 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    .mono {
-      font-family: 'JetBrains Mono', monospace;
-    }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
 
-    /* Layout */
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 0 24px;
-    }
-
-    /* Navigation */
+    /* Nav */
     nav {
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
       z-index: 100;
-      padding: 16px 24px;
+      padding: 14px 24px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: linear-gradient(to bottom, var(--bg-deep) 60%, transparent 100%);
+      background: rgba(10, 12, 16, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
     }
 
     .logo {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       font-weight: 700;
-      font-size: 16px;
-      letter-spacing: -0.02em;
+      font-size: 15px;
     }
 
-    .logo-img {
-      width: 36px;
-      height: 36px;
-      object-fit: contain;
-    }
+    .logo-img { width: 32px; height: 32px; }
 
     .nav-links {
       display: flex;
-      gap: 32px;
+      gap: 28px;
       list-style: none;
     }
 
@@ -101,33 +81,27 @@
       transition: color 0.2s;
     }
 
-    .nav-links a:hover {
-      color: var(--text-primary);
-    }
+    .nav-links a:hover { color: var(--text-primary); }
 
     .nav-cta {
       background: var(--accent-blue);
       color: var(--bg-deep);
-      padding: 10px 20px;
-      border-radius: 10px;
+      padding: 9px 18px;
+      border-radius: 8px;
       text-decoration: none;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 700;
       transition: all 0.2s;
     }
 
     .nav-cta:hover {
       background: #7db8fc;
-      transform: translateY(-1px);
-      box-shadow: 0 8px 24px var(--accent-blue-glow);
+      box-shadow: 0 6px 20px var(--accent-blue-glow);
     }
 
-    /* Hero Section */
+    /* Hero */
     .hero {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      padding: 120px 24px 80px;
+      padding: 140px 24px 80px;
       position: relative;
       overflow: hidden;
     }
@@ -135,40 +109,22 @@
     .hero::before {
       content: '';
       position: absolute;
-      top: -20%;
-      right: -10%;
-      width: 800px;
-      height: 800px;
+      top: -100px;
+      right: -200px;
+      width: 700px;
+      height: 700px;
       background: radial-gradient(circle, var(--accent-blue-glow) 0%, transparent 60%);
       pointer-events: none;
     }
 
-    .hero::after {
-      content: '';
-      position: absolute;
-      bottom: -30%;
-      left: -10%;
-      width: 600px;
-      height: 600px;
-      background: radial-gradient(circle, var(--accent-green-glow) 0%, transparent 60%);
-      pointer-events: none;
-    }
-
-    .hero-inner {
+    .hero-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 60px;
+      gap: 48px;
       align-items: center;
-      max-width: 1200px;
-      margin: 0 auto;
-      width: 100%;
-      position: relative;
-      z-index: 1;
     }
 
-    .hero-content {
-      max-width: 560px;
-    }
+    .hero-content { max-width: 520px; }
 
     .badge {
       display: inline-flex;
@@ -176,71 +132,62 @@
       gap: 8px;
       background: var(--bg-card);
       border: 1px solid var(--border);
-      padding: 8px 14px;
+      padding: 6px 12px;
       border-radius: 999px;
-      font-size: 13px;
-      font-weight: 500;
-      margin-bottom: 24px;
-      animation: fadeIn 0.6s ease-out;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 20px;
     }
 
     .badge-dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       background: var(--accent-green);
       border-radius: 50%;
       animation: pulse 2s infinite;
     }
 
     @keyframes pulse {
-      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--accent-green-glow); }
-      50% { opacity: 0.8; box-shadow: 0 0 12px 4px var(--accent-green-glow); }
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(16px); }
-      to { opacity: 1; transform: translateY(0); }
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
     }
 
     .hero h1 {
-      font-size: clamp(40px, 6vw, 56px);
+      font-size: clamp(36px, 5vw, 48px);
       font-weight: 800;
       line-height: 1.1;
       letter-spacing: -0.03em;
-      margin-bottom: 20px;
-      animation: fadeIn 0.6s ease-out 0.1s both;
+      margin-bottom: 16px;
     }
 
     .hero h1 .highlight {
-      background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-cyan) 100%);
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
 
-    .hero-description {
-      font-size: 18px;
+    .hero-desc {
+      font-size: 17px;
       color: var(--text-secondary);
-      margin-bottom: 32px;
+      margin-bottom: 28px;
       line-height: 1.7;
-      max-width: 480px;
-      animation: fadeIn 0.6s ease-out 0.2s both;
     }
 
     .hero-actions {
       display: flex;
       gap: 12px;
-      animation: fadeIn 0.6s ease-out 0.3s both;
+      flex-wrap: wrap;
     }
 
     .btn-primary {
       background: var(--accent-blue);
       color: var(--bg-deep);
-      padding: 14px 28px;
+      padding: 12px 24px;
       border: none;
-      border-radius: 12px;
+      border-radius: 10px;
       font-family: inherit;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 700;
       cursor: pointer;
       transition: all 0.2s;
@@ -253,21 +200,20 @@
     .btn-primary:hover {
       background: #7db8fc;
       transform: translateY(-2px);
-      box-shadow: 0 12px 32px var(--accent-blue-glow);
+      box-shadow: 0 10px 28px var(--accent-blue-glow);
     }
 
     .btn-secondary {
       background: var(--bg-card);
       color: var(--text-primary);
-      padding: 14px 28px;
+      padding: 12px 24px;
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
       font-family: inherit;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
       text-decoration: none;
+      transition: all 0.2s;
     }
 
     .btn-secondary:hover {
@@ -280,368 +226,316 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      position: relative;
     }
 
-    .mascot-container {
-      position: relative;
+    .mascot {
+      width: 280px;
+      height: 280px;
+      object-fit: contain;
       animation: float 4s ease-in-out infinite;
+      filter: drop-shadow(0 20px 40px rgba(0,0,0,0.4));
     }
 
     @keyframes float {
       0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-12px); }
+      50% { transform: translateY(-10px); }
     }
 
-    .mascot {
-      width: 320px;
-      height: 320px;
-      object-fit: contain;
-      filter: drop-shadow(0 24px 48px rgba(0, 0, 0, 0.4));
-    }
-
-    /* Terminal */
-    .terminal {
-      position: absolute;
-      bottom: -40px;
-      left: -60px;
+    /* Quick Start */
+    .quickstart {
+      padding: 60px 24px;
       background: var(--bg-surface);
+      border-top: 1px solid var(--border);
+    }
+
+    .quickstart-inner {
+      display: grid;
+      grid-template-columns: 1fr 1.4fr;
+      gap: 40px;
+      align-items: start;
+    }
+
+    .quickstart-text h2 {
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .quickstart-text p {
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+
+    .prereq {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .prereq-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .prereq-item svg {
+      width: 16px;
+      height: 16px;
+      color: var(--accent-green);
+    }
+
+    .code-block {
+      background: var(--bg-deep);
       border: 1px solid var(--border);
       border-radius: 12px;
-      width: 300px;
       overflow: hidden;
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-      animation: slideUp 0.8s ease-out 0.5s both;
     }
 
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(24px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .terminal-header {
+    .code-header {
       background: var(--bg-card);
-      padding: 10px 14px;
-      display: flex;
-      gap: 6px;
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
       border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
-    .terminal-dot {
+    .code-header .dots {
+      display: flex;
+      gap: 5px;
+    }
+
+    .code-header .dot {
       width: 10px;
       height: 10px;
       border-radius: 50%;
     }
-    .terminal-dot:nth-child(1) { background: #ff5f56; }
-    .terminal-dot:nth-child(2) { background: #ffbd2e; }
-    .terminal-dot:nth-child(3) { background: #27ca40; }
 
-    .terminal-body {
-      padding: 14px;
+    .code-header .dot:nth-child(1) { background: #ff5f56; }
+    .code-header .dot:nth-child(2) { background: #ffbd2e; }
+    .code-header .dot:nth-child(3) { background: #27ca40; }
+
+    .code-body {
+      padding: 16px 20px;
       font-family: 'JetBrains Mono', monospace;
-      font-size: 12px;
-      line-height: 1.8;
+      font-size: 13px;
+      line-height: 1.9;
+      overflow-x: auto;
     }
 
-    .terminal-line {
+    .code-line {
       display: flex;
-      gap: 8px;
+      gap: 10px;
     }
 
-    .terminal-prompt { color: var(--accent-blue); }
-    .terminal-cmd { color: var(--text-primary); }
-    .terminal-output { color: var(--text-muted); margin-left: 16px; }
+    .code-prompt { color: var(--accent-blue); user-select: none; }
+    .code-cmd { color: var(--text-primary); }
+    .code-comment { color: var(--text-muted); font-style: italic; }
+    .code-output { color: var(--accent-green); margin-left: 20px; }
 
-    /* Concept Section */
-    .concept {
-      padding: 100px 24px;
-      background: var(--bg-surface);
-      position: relative;
-    }
-
-    .concept::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: linear-gradient(to right, transparent, var(--border), transparent);
-    }
+    /* Section shared */
+    .section { padding: 80px 24px; }
+    .section-alt { background: var(--bg-surface); }
 
     .section-header {
       text-align: center;
-      max-width: 700px;
-      margin: 0 auto 64px;
+      max-width: 600px;
+      margin: 0 auto 48px;
     }
 
     .section-label {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.12em;
       color: var(--accent-blue);
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
     .section-header h2 {
-      font-size: clamp(28px, 4vw, 40px);
+      font-size: clamp(24px, 4vw, 32px);
       font-weight: 800;
-      line-height: 1.2;
-      letter-spacing: -0.02em;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
     }
 
     .section-header p {
       color: var(--text-secondary);
-      font-size: 17px;
+      font-size: 16px;
     }
 
     /* Hierarchy */
     .hierarchy {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 20px;
-      max-width: 1000px;
-      margin: 0 auto;
+      gap: 16px;
     }
 
     .hierarchy-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 28px;
+      border-radius: 14px;
+      padding: 24px;
       text-align: center;
-      transition: all 0.3s;
+      transition: all 0.2s;
       position: relative;
     }
 
     .hierarchy-card:hover {
       border-color: var(--accent-blue);
-      transform: translateY(-4px);
+      transform: translateY(-3px);
     }
 
     .hierarchy-card::after {
       content: '→';
       position: absolute;
-      right: -22px;
+      right: -18px;
       top: 50%;
       transform: translateY(-50%);
       color: var(--text-muted);
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 700;
     }
 
-    .hierarchy-card:last-child::after {
-      display: none;
-    }
+    .hierarchy-card:last-child::after { display: none; }
 
     .hierarchy-icon {
-      width: 72px;
-      height: 72px;
-      margin: 0 auto 20px;
-      border-radius: 16px;
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 16px;
+      border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
     .hierarchy-card:nth-child(1) .hierarchy-icon {
-      background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-card) 100%);
+      background: var(--bg-elevated);
       border: 2px solid var(--border);
     }
-
     .hierarchy-card:nth-child(2) .hierarchy-icon {
-      background: linear-gradient(135deg, var(--accent-blue) 0%, #3b82f6 100%);
+      background: linear-gradient(135deg, var(--accent-blue), #3b82f6);
     }
-
     .hierarchy-card:nth-child(3) .hierarchy-icon {
-      background: linear-gradient(135deg, var(--accent-green) 0%, #10b981 100%);
+      background: linear-gradient(135deg, var(--accent-green), #10b981);
       border-radius: 50%;
     }
 
     .hierarchy-icon svg {
-      width: 32px;
-      height: 32px;
+      width: 26px;
+      height: 26px;
       stroke-width: 1.5;
       fill: none;
     }
 
-    .hierarchy-card:nth-child(1) .hierarchy-icon svg { stroke: var(--text-primary); }
-    .hierarchy-card:nth-child(2) .hierarchy-icon svg,
-    .hierarchy-card:nth-child(3) .hierarchy-icon svg { stroke: var(--bg-deep); }
+    .hierarchy-card:nth-child(1) svg { stroke: var(--text-primary); }
+    .hierarchy-card:nth-child(2) svg,
+    .hierarchy-card:nth-child(3) svg { stroke: var(--bg-deep); }
 
     .hierarchy-card h3 {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 700;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
 
-    .hierarchy-card .subtitle {
-      font-size: 12px;
+    .hierarchy-card .sub {
+      font-size: 11px;
       color: var(--text-muted);
-      font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
     .hierarchy-card p {
       color: var(--text-secondary);
-      font-size: 14px;
+      font-size: 13px;
       line-height: 1.6;
     }
 
     /* Features */
-    .features {
-      padding: 100px 24px;
-      background: var(--bg-deep);
-    }
-
     .features-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-      max-width: 1000px;
-      margin: 0 auto;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
     }
 
     .feature-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 24px;
+      border-radius: 12px;
+      padding: 20px;
       transition: all 0.2s;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .feature-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: var(--feature-accent, var(--accent-blue));
-      opacity: 0;
-      transition: opacity 0.2s;
-    }
-
-    .feature-card:hover::before {
-      opacity: 1;
     }
 
     .feature-card:hover {
-      border-color: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255,255,255,0.1);
       transform: translateY(-2px);
     }
 
-    .feature-card:nth-child(2) { --feature-accent: var(--accent-green); }
-    .feature-card:nth-child(3) { --feature-accent: var(--accent-cyan); }
-    .feature-card:nth-child(4) { --feature-accent: var(--accent-purple); }
-    .feature-card:nth-child(5) { --feature-accent: var(--accent-yellow); }
-    .feature-card:nth-child(6) { --feature-accent: var(--accent-red); }
-
     .feature-icon {
-      width: 44px;
-      height: 44px;
+      width: 40px;
+      height: 40px;
       background: var(--bg-elevated);
-      border-radius: 10px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 16px;
-      color: var(--feature-accent, var(--accent-blue));
+      margin-bottom: 14px;
+      color: var(--accent-blue);
     }
 
+    .feature-card:nth-child(2) .feature-icon { color: var(--accent-green); }
+    .feature-card:nth-child(3) .feature-icon { color: var(--accent-cyan); }
+    .feature-card:nth-child(4) .feature-icon { color: var(--accent-purple); }
+    .feature-card:nth-child(5) .feature-icon { color: var(--accent-yellow); }
+    .feature-card:nth-child(6) .feature-icon { color: var(--accent-red); }
+    .feature-card:nth-child(7) .feature-icon { color: var(--accent-green); }
+    .feature-card:nth-child(8) .feature-icon { color: var(--accent-blue); }
+
     .feature-card h3 {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 700;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .feature-card p {
       color: var(--text-secondary);
       font-size: 13px;
-      line-height: 1.6;
+      line-height: 1.5;
     }
 
     /* API Preview */
-    .preview {
-      padding: 100px 24px;
-      background: var(--bg-surface);
-      position: relative;
-    }
-
-    .preview::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: linear-gradient(to right, transparent, var(--border), transparent);
-    }
-
-    .preview-grid {
+    .api-grid {
       display: grid;
-      grid-template-columns: 1fr 1.3fr;
-      gap: 48px;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 40px;
       align-items: center;
-      max-width: 1000px;
-      margin: 0 auto;
     }
 
-    .preview-content h2 {
-      font-size: clamp(26px, 3.5vw, 36px);
+    .api-text h2 {
+      font-size: 28px;
       font-weight: 800;
-      line-height: 1.2;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
 
-    .preview-content p {
+    .api-text p {
       color: var(--text-secondary);
-      font-size: 16px;
-      margin-bottom: 24px;
+      font-size: 15px;
+      margin-bottom: 20px;
       line-height: 1.7;
     }
 
-    .code-block {
-      background: var(--bg-deep);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      overflow: hidden;
-    }
-
-    .code-header {
-      background: var(--bg-card);
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-muted);
-    }
-
-    .code-body {
-      padding: 20px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px;
-      line-height: 1.8;
-      overflow-x: auto;
-    }
-
-    .code-comment { color: var(--text-muted); }
-    .code-property { color: var(--accent-blue); }
-    .code-string { color: var(--accent-green); }
-    .code-value { color: var(--accent-yellow); }
-
     /* CTA */
     .cta {
-      padding: 120px 24px;
+      padding: 100px 24px;
       text-align: center;
       position: relative;
-      background: var(--bg-deep);
     }
 
     .cta::before {
@@ -650,8 +544,8 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 600px;
-      height: 600px;
+      width: 500px;
+      height: 500px;
       background: radial-gradient(circle, var(--accent-blue-glow) 0%, transparent 60%);
       pointer-events: none;
     }
@@ -659,19 +553,16 @@
     .cta-content {
       position: relative;
       z-index: 1;
-      max-width: 600px;
-      margin: 0 auto;
     }
 
     .cta h2 {
-      font-size: clamp(32px, 5vw, 48px);
+      font-size: clamp(28px, 5vw, 40px);
       font-weight: 800;
-      line-height: 1.15;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
 
     .cta h2 .highlight {
-      background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-green) 100%);
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-green));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -679,145 +570,94 @@
 
     .cta p {
       color: var(--text-secondary);
-      font-size: 17px;
-      margin-bottom: 32px;
+      font-size: 16px;
+      margin-bottom: 28px;
     }
 
     .cta-actions {
       display: flex;
       justify-content: center;
       gap: 12px;
+      flex-wrap: wrap;
     }
 
     /* Footer */
     footer {
-      padding: 40px 24px;
+      padding: 32px 24px;
       border-top: 1px solid var(--border);
-      background: var(--bg-deep);
     }
 
     .footer-content {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      max-width: 1200px;
+      max-width: 1100px;
       margin: 0 auto;
     }
 
     .footer-logo {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       font-weight: 700;
+      font-size: 14px;
     }
 
-    .footer-logo img {
-      width: 28px;
-      height: 28px;
-    }
+    .footer-logo img { width: 24px; height: 24px; }
 
     .footer-links {
       display: flex;
-      gap: 28px;
+      gap: 24px;
       list-style: none;
     }
 
     .footer-links a {
       color: var(--text-muted);
       text-decoration: none;
-      font-size: 14px;
+      font-size: 13px;
       transition: color 0.2s;
     }
 
-    .footer-links a:hover {
-      color: var(--text-primary);
-    }
+    .footer-links a:hover { color: var(--text-primary); }
 
     .footer-copy {
       color: var(--text-muted);
-      font-size: 13px;
+      font-size: 12px;
     }
 
     /* Responsive */
     @media (max-width: 900px) {
-      .hero-inner {
-        grid-template-columns: 1fr;
-        text-align: center;
-      }
-
-      .hero-content {
-        max-width: 100%;
-      }
-
-      .hero-description {
-        max-width: 100%;
-      }
-
-      .hero-actions {
-        justify-content: center;
-      }
-
-      .hero-visual {
-        margin-top: 40px;
-      }
-
-      .terminal {
-        display: none;
-      }
-
-      .mascot {
-        width: 240px;
-        height: 240px;
-      }
-
-      .hierarchy {
+      .hero-grid,
+      .quickstart-inner,
+      .api-grid {
         grid-template-columns: 1fr;
       }
 
-      .hierarchy-card::after {
-        display: none;
-      }
+      .hero-content { text-align: center; max-width: 100%; }
+      .hero-actions { justify-content: center; }
+      .hero-visual { margin-top: 32px; }
+      .mascot { width: 200px; height: 200px; }
 
-      .preview-grid {
-        grid-template-columns: 1fr;
-      }
+      .hierarchy { grid-template-columns: 1fr; }
+      .hierarchy-card::after { display: none; }
+
+      .quickstart-text { text-align: center; }
+      .prereq { justify-content: center; }
     }
 
     @media (max-width: 600px) {
-      nav {
-        padding: 12px 16px;
-      }
-
-      .nav-links {
-        display: none;
-      }
-
-      .hero-actions,
-      .cta-actions {
-        flex-direction: column;
-        align-items: center;
-      }
-
-      .btn-primary,
-      .btn-secondary {
-        width: 100%;
-        justify-content: center;
-      }
-
-      .footer-content {
-        flex-direction: column;
-        gap: 20px;
-        text-align: center;
-      }
+      .nav-links { display: none; }
+      .hero-actions, .cta-actions { flex-direction: column; align-items: center; }
+      .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+      .footer-content { flex-direction: column; gap: 16px; text-align: center; }
     }
 
-    /* Scroll reveal */
+    /* Reveal animation */
     .reveal {
       opacity: 0;
-      transform: translateY(24px);
-      transition: all 0.6s ease-out;
+      transform: translateY(20px);
+      transition: all 0.5s ease-out;
     }
-
     .reveal.visible {
       opacity: 1;
       transform: translateY(0);
@@ -825,32 +665,31 @@
   </style>
 </head>
 <body>
-  <!-- Navigation -->
+  <!-- Nav -->
   <nav>
     <div class="logo">
       <img src="https://raw.githubusercontent.com/acastellana/clawcondos/master/public/media/clawcondos-logo.png" alt="ClawCondos" class="logo-img">
       <span>ClawCondos</span>
     </div>
     <ul class="nav-links">
-      <li><a href="#concept">Concept</a></li>
+      <li><a href="#start">Quick Start</a></li>
       <li><a href="#features">Features</a></li>
-      <li><a href="#docs">API</a></li>
+      <li><a href="#api">API</a></li>
     </ul>
-    <a href="#start" class="nav-cta">Get Started</a>
+    <a href="https://github.com/acastellana/clawcondos" class="nav-cta" target="_blank">GitHub</a>
   </nav>
 
   <!-- Hero -->
   <section class="hero">
-    <div class="hero-inner container">
+    <div class="hero-grid container">
       <div class="hero-content">
         <div class="badge">
           <span class="badge-dot"></span>
           <span>Open source · Self-hosted</span>
         </div>
         <h1>Mission Control for <span class="highlight">AI Agents</span></h1>
-        <p class="hero-description">
-          Organize autonomous work into structured spaces. Condos hold goals. 
-          Goals spawn sessions. Sessions get things done.
+        <p class="hero-desc">
+          Organize autonomous work into structured spaces. Condos hold goals. Goals spawn sessions. Sessions get things done.
         </p>
         <div class="hero-actions">
           <a href="#start" class="btn-primary">
@@ -862,37 +701,53 @@
           <a href="https://github.com/acastellana/clawcondos" class="btn-secondary" target="_blank">View on GitHub</a>
         </div>
       </div>
-
       <div class="hero-visual">
-        <div class="mascot-container">
-          <img src="https://raw.githubusercontent.com/acastellana/clawcondos/master/public/media/clawcondos-logo.png" alt="ClawCondos Mascot" class="mascot">
-        </div>
+        <img src="https://raw.githubusercontent.com/acastellana/clawcondos/master/public/media/clawcondos-logo.png" alt="ClawCondos" class="mascot">
+      </div>
+    </div>
+  </section>
 
-        <div class="terminal">
-          <div class="terminal-header">
-            <span class="terminal-dot"></span>
-            <span class="terminal-dot"></span>
-            <span class="terminal-dot"></span>
+  <!-- Quick Start -->
+  <section class="quickstart" id="start">
+    <div class="quickstart-inner container">
+      <div class="quickstart-text">
+        <h2>Up and running in 2 minutes</h2>
+        <p>Clone the repo, install, and start the server. Connect to your OpenClaw gateway and you're live.</p>
+        <div class="prereq">
+          <div class="prereq-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Node.js 18+
           </div>
-          <div class="terminal-body">
-            <div class="terminal-line">
-              <span class="terminal-prompt">$</span>
-              <span class="terminal-cmd">git clone github.com/acastellana/clawcondos</span>
-            </div>
-            <div class="terminal-output">→ Cloning into 'clawcondos'...</div>
-            <div class="terminal-line">
-              <span class="terminal-prompt">$</span>
-              <span class="terminal-cmd">cd clawcondos && npm start</span>
-            </div>
-            <div class="terminal-output">→ ClawCondos running on :9000 ✓</div>
+          <div class="prereq-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            OpenClaw Gateway
           </div>
+        </div>
+      </div>
+      <div class="code-block">
+        <div class="code-header">
+          <div class="dots">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </div>
+          <span>Terminal</span>
+        </div>
+        <div class="code-body">
+          <div class="code-line"><span class="code-comment"># Clone and install</span></div>
+          <div class="code-line"><span class="code-prompt">$</span> <span class="code-cmd">git clone https://github.com/acastellana/clawcondos</span></div>
+          <div class="code-line"><span class="code-prompt">$</span> <span class="code-cmd">cd clawcondos && npm install</span></div>
+          <br>
+          <div class="code-line"><span class="code-comment"># Start the server</span></div>
+          <div class="code-line"><span class="code-prompt">$</span> <span class="code-cmd">node serve.js</span></div>
+          <div class="code-output">→ ClawCondos running on http://localhost:9000</div>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Concept -->
-  <section class="concept" id="concept">
+  <section class="section section-alt" id="concept">
     <div class="container">
       <div class="section-header reveal">
         <p class="section-label">The Architecture</p>
@@ -910,8 +765,8 @@
             </svg>
           </div>
           <h3>Condos</h3>
-          <p class="subtitle">Workspaces</p>
-          <p>Isolated environments where related work lives. Each condo has its own context, files, and purpose.</p>
+          <p class="sub">Workspaces</p>
+          <p>Isolated environments where related work lives. Each condo has its own context and files.</p>
         </div>
 
         <div class="hierarchy-card reveal">
@@ -922,7 +777,7 @@
             </svg>
           </div>
           <h3>Goals</h3>
-          <p class="subtitle">Objectives</p>
+          <p class="sub">Objectives</p>
           <p>Discrete outcomes to achieve. Goals have status, priority, tasks, and deadlines.</p>
         </div>
 
@@ -933,7 +788,7 @@
             </svg>
           </div>
           <h3>Sessions</h3>
-          <p class="subtitle">Conversations</p>
+          <p class="sub">Conversations</p>
           <p>Active agent threads doing work. Sessions execute goals and spawn subagents.</p>
         </div>
       </div>
@@ -941,7 +796,7 @@
   </section>
 
   <!-- Features -->
-  <section class="features" id="features">
+  <section class="section" id="features">
     <div class="container">
       <div class="section-header reveal">
         <p class="section-label">Capabilities</p>
@@ -952,19 +807,17 @@
       <div class="features-grid">
         <div class="feature-card reveal">
           <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
             </svg>
           </div>
           <h3>Hierarchical Context</h3>
-          <p>Goals inherit condo context. Sessions inherit goal context. Every agent knows what it's working on.</p>
+          <p>Goals inherit condo context. Sessions inherit goal context. Every agent knows its purpose.</p>
         </div>
 
         <div class="feature-card reveal">
           <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
             </svg>
           </div>
@@ -974,24 +827,41 @@
 
         <div class="feature-card reveal">
           <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
             </svg>
           </div>
-          <h3>Subagent Spawning</h3>
-          <p>Sessions can spawn child sessions for parallel work. Parent agents stay informed.</p>
+          <h3>Apps Platform</h3>
+          <p>Embed any web app with an AI assistant sidebar. Node.js, Python, React — anything.</p>
         </div>
 
         <div class="feature-card reveal">
           <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <h3>Subagent Spawning</h3>
+          <p>Sessions spawn child sessions for parallel work. Parent agents stay informed.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </div>
+          <h3>Voice & Media</h3>
+          <p>Voice recording with Whisper transcription, image uploads, and media attachments.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
             </svg>
           </div>
           <h3>File-backed State</h3>
@@ -1000,57 +870,55 @@
 
         <div class="feature-card reveal">
           <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
             </svg>
           </div>
-          <h3>Project Isolation</h3>
-          <p>Each condo is a separate workspace. Keep projects organized and contexts clean.</p>
+          <h3>Organize Wizard</h3>
+          <p>AI-assisted session triage. Automatically suggest goals and categorize conversations.</p>
         </div>
 
         <div class="feature-card reveal">
           <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"/>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
           </div>
           <h3>WebSocket API</h3>
-          <p>Real-time API plus agent tools. Integrate with existing workflows. Automate everything.</p>
+          <p>Real-time API for agents to create goals, update progress, and spawn sessions.</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- API Preview -->
-  <section class="preview" id="docs">
-    <div class="preview-grid container">
-      <div class="preview-content reveal">
+  <section class="section section-alt" id="api">
+    <div class="api-grid container">
+      <div class="api-text reveal">
         <p class="section-label">Simple Integration</p>
         <h2>Designed for agent-first workflows</h2>
-        <p>
-          ClawCondos exposes clean APIs that agents can call directly. 
-          Create goals, update progress, spawn sessions — all through 
-          straightforward tool calls.
-        </p>
+        <p>ClawCondos exposes clean APIs that agents can call directly. Create goals, update progress, spawn sessions — all through straightforward tool calls.</p>
         <a href="https://github.com/acastellana/clawcondos/blob/master/docs/BACKEND-API.md" class="btn-secondary" target="_blank">View API Reference</a>
       </div>
 
       <div class="code-block reveal">
-        <div class="code-header">goal_update.json</div>
+        <div class="code-header">
+          <div class="dots">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </div>
+          <span>goal_update.json</span>
+        </div>
         <div class="code-body">
-<pre><code><span class="code-comment">// Update goal progress from an active session</span>
+<pre style="margin:0;"><code><span class="code-comment">// Update goal progress from an active session</span>
 {
-  <span class="code-property">"action"</span>: <span class="code-string">"goal_update"</span>,
-  <span class="code-property">"goalId"</span>: <span class="code-string">"goal_abc123"</span>,
-  <span class="code-property">"status"</span>: <span class="code-string">"in-progress"</span>,
-  <span class="code-property">"summary"</span>: <span class="code-string">"Completed API integration"</span>,
-  <span class="code-property">"nextTask"</span>: <span class="code-string">"Writing test coverage"</span>,
-  <span class="code-property">"files"</span>: [
-    <span class="code-string">"src/api/client.ts"</span>,
-    <span class="code-string">"tests/api.test.ts"</span>
-  ]
+  <span style="color:var(--accent-blue)">"action"</span>: <span style="color:var(--accent-green)">"goal_update"</span>,
+  <span style="color:var(--accent-blue)">"goalId"</span>: <span style="color:var(--accent-green)">"goal_abc123"</span>,
+  <span style="color:var(--accent-blue)">"status"</span>: <span style="color:var(--accent-green)">"in-progress"</span>,
+  <span style="color:var(--accent-blue)">"summary"</span>: <span style="color:var(--accent-green)">"Completed API integration"</span>,
+  <span style="color:var(--accent-blue)">"nextTask"</span>: <span style="color:var(--accent-green)">"Writing test coverage"</span>
 }</code></pre>
         </div>
       </div>
@@ -1058,15 +926,14 @@
   </section>
 
   <!-- CTA -->
-  <section class="cta" id="start">
+  <section class="cta">
     <div class="cta-content reveal">
       <h2>Give your agents a <span class="highlight">home</span></h2>
       <p>ClawCondos runs locally or in the cloud. Deploy in minutes.</p>
       <div class="cta-actions">
         <a href="https://github.com/acastellana/clawcondos#readme" class="btn-primary" target="_blank">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
           </svg>
           Read the Docs
         </a>
@@ -1079,11 +946,11 @@
   <footer>
     <div class="footer-content">
       <div class="footer-logo">
-        <img src="https://raw.githubusercontent.com/acastellana/clawcondos/master/public/media/clawcondos-logo.png" alt="ClawCondos">
+        <img src="https://raw.githubusercontent.com/acastellana/clawcondos/master/public/media/clawcondos-logo.png" alt="">
         <span>ClawCondos</span>
       </div>
       <ul class="footer-links">
-        <li><a href="https://github.com/acastellana/clawcondos#readme" target="_blank">Docs</a></li>
+        <li><a href="https://github.com/acastellana/clawcondos/blob/master/docs/SETUP.md" target="_blank">Setup Guide</a></li>
         <li><a href="https://github.com/acastellana/clawcondos" target="_blank">GitHub</a></li>
         <li><a href="https://github.com/acastellana/clawcondos/blob/master/docs/BACKEND-API.md" target="_blank">API</a></li>
         <li><a href="https://openclaw.ai" target="_blank">OpenClaw</a></li>
@@ -1093,29 +960,24 @@
   </footer>
 
   <script>
-    // Scroll reveal
+    // Reveal on scroll
     const revealElements = document.querySelectorAll('.reveal');
-    
     const revealOnScroll = () => {
       revealElements.forEach(el => {
-        const elementTop = el.getBoundingClientRect().top;
-        if (elementTop < window.innerHeight - 80) {
+        if (el.getBoundingClientRect().top < window.innerHeight - 60) {
           el.classList.add('visible');
         }
       });
     };
-    
     window.addEventListener('scroll', revealOnScroll);
     window.addEventListener('load', revealOnScroll);
 
     // Smooth scroll
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-      anchor.addEventListener('click', function(e) {
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
         e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
+        const t = document.querySelector(a.getAttribute('href'));
+        if (t) t.scrollIntoView({ behavior: 'smooth' });
       });
     });
   </script>
