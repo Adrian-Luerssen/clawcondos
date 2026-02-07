@@ -2469,10 +2469,19 @@ function initAutoArchiveUI() {
         const dot = renderGoalDot(goal, sessKeys);
         const nextTask = (goal.nextTask || '').trim();
         const nextTaskEl = nextTask
-          ? `<div style="grid-column: 1 / -1; margin: 2px 0 0 22px; font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Next: ${escapeHtml(nextTask)}</div>`
+          ? `<div style="margin: 2px 0 0 22px; font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Next: ${escapeHtml(nextTask)}</div>`
           : '';
         goalRows.push(`
-          <a class=\"goal-item ${isActive}\" href=\"${escapeHtml(goalHref(goal.id))}\" onclick=\"return handleGoalLinkClick(event, '${escapeHtml(goal.id)}')\">\n            ${dot}\n            <div class=\"goal-checkbox\"></div>\n            <span class=\"goal-name\" title=\"${escapeHtml(nextTask || '')}\">${escapeHtml(goal.title || 'Untitled goal')}</span>\n            <span class=\"goal-count\">${sessionsForGoal.length}</span>\n            <span class=\"goal-add\" title=\"New session for this goal\" onclick=\"event.preventDefault(); event.stopPropagation(); openNewSession('${escapeHtml(condo.id)}','${escapeHtml(goal.id)}')\">+</span>\n            ${nextTaskEl}\n          </a>
+          <a class="goal-item ${isActive}" href="${escapeHtml(goalHref(goal.id))}" onclick="return handleGoalLinkClick(event, '${escapeHtml(goal.id)}')">
+            <div class="goal-item-row">
+              ${dot}
+              <div class="goal-checkbox"></div>
+              <span class="goal-name" title="${escapeHtml(nextTask || '')}">${escapeHtml(goal.title || 'Untitled goal')}</span>
+              <span class="goal-count">${sessionsForGoal.length}</span>
+              <span class="goal-add" title="New session for this goal" onclick="event.preventDefault(); event.stopPropagation(); openNewSession('${escapeHtml(condo.id)}','${escapeHtml(goal.id)}')">+</span>
+            </div>
+            ${nextTaskEl}
+          </a>
         `);
       }
 

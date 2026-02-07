@@ -70,9 +70,17 @@ export function createGoalHandlers(store) {
         const goal = data.goals[idx];
 
         // Validate title if provided
-        if ('title' in params && (typeof params.title !== 'string' || !params.title.trim())) {
-          respond(false, undefined, { message: 'title must be a non-empty string' });
-          return;
+        if ('title' in params) {
+          if (typeof params.title !== 'string' || !params.title.trim()) {
+            respond(false, undefined, { message: 'title must be a non-empty string' });
+            return;
+          }
+          // Reject titles that are just numbers — these come from auto-patch
+          // misinterpreting numbered goal lists in agent context.
+          if (/^\d+$/.test(params.title.trim())) {
+            respond(false, undefined, { message: 'title cannot be a bare number' });
+            return;
+          }
         }
 
         // Whitelist allowed patch fields (prevent overwriting internal fields)
