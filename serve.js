@@ -13,7 +13,10 @@ import { join, extname, resolve as resolvePath } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import crypto from 'crypto';
+import { homedir } from 'os';
 import { rewriteConnectFrame, validateStaticPath, isDotfilePath, filterProxyHeaders, stripSensitiveHeaders } from './lib/serve-helpers.js';
+import { createGatewayClient } from './lib/gateway-client.js';
+import { filterGoals, filterSessions } from './lib/search.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -442,6 +445,47 @@ function getGatewayWsUrl() {
   return process.env.GATEWAY_WS_URL || `ws://${host}:${port}/ws`;
 }
 
+// Read gateway password from OpenClaw config (separate from GATEWAY_AUTH Bearer token)
+function getGatewayPassword() {
+  if (process.env.GATEWAY_PASSWORD) return process.env.GATEWAY_PASSWORD;
+  try {
+    const confPath = join(homedir(), '.openclaw', 'openclaw.json');
+    const conf = JSON.parse(readFileSync(confPath, 'utf-8'));
+    return conf?.gateway?.auth?.password || '';
+  } catch {
+    return '';
+  }
+}
+
+// Internal gateway client (lazy connect on first rpcCall)
+const gatewayClient = createGatewayClient({
+  getWsUrl: getGatewayWsUrl,
+  getAuth: () => process.env.GATEWAY_AUTH || '',
+  getPassword: getGatewayPassword
+});
+
+// Session cache for search (3s TTL to avoid hammering gateway on rapid keystrokes)
+let _sessionCache = null;
+let _sessionCacheTs = 0;
+const SESSION_CACHE_TTL = 3000;
+
+async function getCachedSessions(limit = 500) {
+  const now = Date.now();
+  if (_sessionCache && (now - _sessionCacheTs) < SESSION_CACHE_TTL) {
+    return _sessionCache;
+  }
+  const result = await gatewayClient.rpcCall('sessions.list', { limit });
+  const sessions = result?.sessions;
+  if (!Array.isArray(sessions)) {
+    console.warn('[search] sessions.list returned unexpected shape, got keys:', result ? Object.keys(result) : 'null');
+    _sessionCache = [];
+  } else {
+    _sessionCache = sessions;
+  }
+  _sessionCacheTs = now;
+  return _sessionCache;
+}
+
 // rewriteConnectFrame imported from lib/serve-helpers.js
 
 const server = createServer(async (req, res) => {
@@ -562,6 +606,77 @@ const server = createServer(async (req, res) => {
     const ids = idsRaw.split(',').map(s => s.trim()).filter(Boolean).slice(0, 80);
     const resolved = resolveSkills(ids);
     json(res, 200, { ok: true, skills: resolved });
+    return;
+  }
+
+  // API: Search goals and sessions (ClawCondos)
+  // GET /api/search?q=<query>&limit=<max>
+  if (pathname === '/api/search' && req.method === 'GET') {
+    const q = (url.searchParams.get('q') || '').trim();
+    const limit = Math.min(parseInt(url.searchParams.get('limit')) || 100, 200);
+    if (!q) {
+      json(res, 400, { ok: false, error: 'q parameter is required' });
+      return;
+    }
+    if (q.length > 500) {
+      json(res, 400, { ok: false, error: 'Query too long (max 500 chars)' });
+      return;
+    }
+    try {
+      const [goalsRes, sessionsRes] = await Promise.allSettled([
+        gatewayClient.rpcCall('goals.list', {}),
+        getCachedSessions(500)
+      ]);
+      const goals = goalsRes.status === 'fulfilled'
+        ? filterGoals(goalsRes.value?.goals || [], q).slice(0, limit) : [];
+      const allSessionsList = sessionsRes.status === 'fulfilled' ? (sessionsRes.value || []) : [];
+      const filteredSessions = sessionsRes.status === 'fulfilled'
+        ? filterSessions(allSessionsList, q).slice(0, limit) : [];
+      if (goalsRes.status === 'rejected') console.error('[search] goals.list failed:', goalsRes.reason?.message);
+      if (sessionsRes.status === 'rejected') console.error('[search] sessions.list failed:', sessionsRes.reason?.message);
+
+      // Enrich sessions with goal/condo info and subagent detection
+      const allGoals = goalsRes.status === 'fulfilled' ? (goalsRes.value?.goals || []) : [];
+      function enrichSession(s) {
+        s.isSubagent = s.key.includes(':subagent:');
+        if (s.isSubagent) {
+          const parts = s.key.split(':');
+          if (parts.length >= 4 && parts[2] === 'subagent') {
+            s.parentKey = parts[0] + ':' + parts[1] + ':main';
+          }
+        }
+        for (const g of allGoals) {
+          if (Array.isArray(g.sessions) && g.sessions.includes(s.key)) {
+            s.goalTitle = g.title;
+            s.goalId = g.id;
+            s.condoId = g.condoId;
+            s.condoName = g.condoName;
+            break;
+          }
+        }
+      }
+      for (const s of filteredSessions) enrichSession(s);
+
+      // Include parent sessions when subagents match but parent doesn't
+      const filteredKeys = new Set(filteredSessions.map(s => s.key));
+      const sessionsByKey = new Map(allSessionsList.map(s => [s.key, s]));
+      for (const s of [...filteredSessions]) {
+        if (s.isSubagent && s.parentKey && !filteredKeys.has(s.parentKey)) {
+          const parent = sessionsByKey.get(s.parentKey);
+          if (parent) {
+            const p = { ...parent, includedAsParent: true };
+            enrichSession(p);
+            filteredSessions.push(p);
+            filteredKeys.add(p.key);
+          }
+        }
+      }
+
+      json(res, 200, { ok: true, query: q, goals, sessions: filteredSessions });
+    } catch (err) {
+      console.error('[search] Error:', err.message, err.stack);
+      json(res, 500, { ok: false, error: 'Internal search error' });
+    }
     return;
   }
 
@@ -950,3 +1065,18 @@ server.listen(PORT, () => {
    $ open http://localhost:${PORT}/app.html?id=kb
 `);
 });
+
+// Graceful shutdown
+function shutdown() {
+  console.log('\n[shutdown] Closing gateway client...');
+  try { gatewayClient.close(); } catch (e) {
+    console.error('[shutdown] Error closing gateway client:', e.message);
+  }
+  try { unwatchFile(GOALS_FILE); } catch (e) {
+    console.error('[shutdown] Error unwatching goals file:', e.message);
+  }
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3000);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

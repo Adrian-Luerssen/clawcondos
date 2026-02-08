@@ -259,7 +259,7 @@
       <span class="brand">ClawCondos</span>
     </div>
 
-    <button class="sidebar-search-btn" onclick="event.stopPropagation(); openSearchPalette()" title="Search (Cmd+K)">
+    <button class="sidebar-search-btn" onclick="event.stopPropagation(); openSearchView()" title="Search (Cmd+K)">
       &#x1F50D; Search <kbd>K</kbd>
     </button>
 
@@ -518,6 +518,20 @@
           </div>
           <div class="voice-hint" id="voiceHint">Recording… click mic to stop</div>
         </div>
+      </div>
+
+      <!-- Search View -->
+      <div class="view" id="searchView">
+        <div class="search-view-bar">
+          <span class="search-view-icon">&#x1F50D;</span>
+          <input type="text" class="form-input search-view-input" id="searchViewInput"
+                 placeholder="Search goals and sessions..."
+                 oninput="onSearchViewInput()"
+                 onkeydown="handleSearchViewKey(event)">
+          <span class="search-view-count" id="searchViewCount"></span>
+          <button class="ghost-btn" onclick="closeSearchView()" title="Close (Esc)" style="background:none;border:none;color:var(--text-dim);font-size:1.1rem;cursor:pointer;padding:4px 8px;">&#x2715;</button>
+        </div>
+        <div class="search-view-results" id="searchViewResults"></div>
       </div>
 
       <!-- ═══════════════════════════════════════════════════════════════
@@ -2488,6 +2502,7 @@
 
       document.getElementById('overviewView').classList.remove('active');
       document.getElementById('chatView').classList.remove('active');
+      document.getElementById('searchView').classList.remove('active');
       document.getElementById('goalView').classList.remove('panel-mode');
       document.getElementById('goalView').classList.add('active');
       document.querySelector('.main-content').classList.remove('split-view');
@@ -4653,6 +4668,7 @@ Response format:
 
       document.getElementById('overviewView').classList.add('active');
       document.getElementById('chatView').classList.remove('active');
+      document.getElementById('searchView').classList.remove('active');
       document.getElementById('goalView').classList.remove('active');
       document.getElementById('goalView').classList.remove('panel-mode');
       document.querySelector('.main-content').classList.remove('split-view');
@@ -4801,6 +4817,7 @@ Response format:
       }
       
       document.getElementById('overviewView').classList.remove('active');
+      document.getElementById('searchView').classList.remove('active');
       document.getElementById('chatView').classList.add('active');
       document.getElementById('mainTitle').textContent = getSessionName(session);
       document.getElementById('mainSubtitle').textContent = session.key;
@@ -6220,40 +6237,60 @@ Response format:
     }
     
     // ═══════════════════════════════════════════════════════════════
-    // SEARCH PALETTE (Cmd+K)
+    // SEARCH VIEW (Cmd+K) — content-area search with detail panel
     // ═══════════════════════════════════════════════════════════════
     let _searchDebounceTimer = null;
     let _searchRequestId = 0;
     let _searchSelectedIdx = -1;
     let _searchResults = []; // flat array of { type, data }
+    let _searchPreviousView = null; // remember where to go back
 
-    function openSearchPalette() {
-      const overlay = document.getElementById('searchPalette');
-      overlay.classList.remove('hidden');
-      const input = document.getElementById('searchPaletteInput');
+    function openSearchView() {
+      // Remember current view to restore on close
+      _searchPreviousView = state.currentView;
+      state.currentView = 'search';
+
+      // Close detail panel if open
+      closeDetailPanel({ fromRouter: true });
+
+      document.getElementById('overviewView').classList.remove('active');
+      document.getElementById('chatView').classList.remove('active');
+      document.getElementById('goalView').classList.remove('active');
+      document.getElementById('goalView').classList.remove('panel-mode');
+      document.querySelector('.main-content').classList.remove('split-view');
+      document.getElementById('searchView').classList.add('active');
+
+      document.getElementById('mainTitle').textContent = 'Search';
+      document.getElementById('mainSubtitle').textContent = '';
+      document.getElementById('headerAction').style.display = 'none';
+      document.getElementById('headerStatusIndicator').style.display = 'none';
+
+      const input = document.getElementById('searchViewInput');
       input.value = '';
       input.focus();
       _searchSelectedIdx = -1;
       _searchResults = [];
-      showRecentItems();
+      showSearchRecentItems();
     }
 
-    function closeSearchPalette() {
-      document.getElementById('searchPalette').classList.add('hidden');
+    function closeSearchView() {
+      clearTimeout(_searchDebounceTimer);
+      _searchDebounceTimer = null;
       _searchSelectedIdx = -1;
       _searchResults = [];
+      closeDetailPanel({ fromRouter: true });
+      showOverview();
     }
 
-    function toggleSearchPalette() {
-      const overlay = document.getElementById('searchPalette');
-      if (overlay.classList.contains('hidden')) {
-        openSearchPalette();
+    function toggleSearchView() {
+      if (state.currentView === 'search') {
+        closeSearchView();
       } else {
-        closeSearchPalette();
+        openSearchView();
       }
     }
 
-    function showRecentItems() {
+    function showSearchRecentItems() {
       const recentGoals = (state.goals || [])
         .slice()
         .sort((a, b) => (b.updatedAtMs || 0) - (a.updatedAtMs || 0))
@@ -6265,124 +6302,222 @@ Response format:
           const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
           return tb - ta;
         })
-        .slice(0, 5);
-      renderSearchPaletteResults(recentGoals, recentSessions, true);
+        .slice(0, 10);
+      renderSearchResults(recentGoals, recentSessions, true);
     }
 
-    function onSearchPaletteInput() {
-      const query = document.getElementById('searchPaletteInput').value.trim();
+    function onSearchViewInput() {
+      const query = document.getElementById('searchViewInput').value.trim();
       clearTimeout(_searchDebounceTimer);
 
       if (!query) {
         _searchRequestId++;
-        showRecentItems();
+        showSearchRecentItems();
         return;
       }
 
       _searchDebounceTimer = setTimeout(() => {
         const reqId = ++_searchRequestId;
-        fetch('/api/search?q=' + encodeURIComponent(query) + '&limit=20')
-          .then(r => r.json())
+        fetch('/api/search?q=' + encodeURIComponent(query) + '&limit=100')
+          .then(r => {
+            if (!r.ok && !r.headers.get('content-type')?.includes('application/json')) {
+              throw new Error('Search request failed with status ' + r.status);
+            }
+            return r.json();
+          })
           .then(data => {
-            if (reqId !== _searchRequestId) return; // stale
+            if (reqId !== _searchRequestId) return;
             if (data.ok) {
-              renderSearchPaletteResults(data.goals || [], data.sessions || [], false);
+              renderSearchResults(data.goals || [], data.sessions || [], false);
             } else {
-              showSearchError('Search failed');
+              showSearchViewError(data.error || 'Search failed');
             }
           })
-          .catch(() => {
+          .catch(err => {
+            console.error('[search] Search request failed:', err);
             if (reqId !== _searchRequestId) return;
-            showSearchError('Search unavailable');
+            showSearchViewError('Search unavailable');
           });
       }, 200);
     }
 
-    function showSearchError(msg) {
-      const el = document.getElementById('searchPaletteResults');
+    function showSearchViewError(msg) {
+      const el = document.getElementById('searchViewResults');
       el.textContent = '';
+      document.getElementById('searchViewCount').textContent = '';
       const div = document.createElement('div');
-      div.className = 'search-palette-error';
+      div.className = 'search-view-empty';
       div.textContent = msg;
       el.appendChild(div);
     }
 
-    function renderSearchPaletteResults(goals, sessions, isRecent) {
+    function getSessionParentKey(key) {
+      var parts = key.split(':');
+      if (parts.length >= 4 && parts[2] === 'subagent') {
+        return parts[0] + ':' + parts[1] + ':main';
+      }
+      return null;
+    }
+
+    function renderSearchResults(goals, sessions, isRecent) {
       _searchResults = [];
-      const container = document.getElementById('searchPaletteResults');
+      const container = document.getElementById('searchViewResults');
       container.textContent = '';
       const goalLabel = isRecent ? 'Recent Goals' : 'Goals';
       const sessionLabel = isRecent ? 'Recent Sessions' : 'Sessions';
 
+      // Goals section
       if (goals.length > 0) {
-        const header = document.createElement('div');
-        header.className = 'search-palette-section';
+        var header = document.createElement('div');
+        header.className = 'search-view-section';
         header.textContent = goalLabel;
         container.appendChild(header);
 
-        goals.forEach(g => {
-          const idx = _searchResults.length;
+        goals.forEach(function(g) {
+          var idx = _searchResults.length;
           _searchResults.push({ type: 'goal', data: g });
-          const stats = goalTaskStats(g);
-          container.appendChild(buildSearchItem(idx,
+          var stats = goalTaskStats(g);
+          var meta = [];
+          if (stats.total > 0) meta.push(stats.done + '/' + stats.total + ' tasks');
+          if (g.condoName) meta.push('\uD83C\uDFE0 ' + g.condoName);
+          container.appendChild(buildSearchRow(idx,
             g.status === 'done' ? '\u2705' : '\uD83C\uDFAF',
             g.title || 'Untitled',
-            stats.total > 0 ? stats.done + '/' + stats.total + ' tasks' : ''
+            meta.join(' \u00B7 '),
+            false
           ));
         });
       }
 
+      // Sessions section — hierarchical grouping
       if (sessions.length > 0) {
-        const header = document.createElement('div');
-        header.className = 'search-palette-section';
+        var header = document.createElement('div');
+        header.className = 'search-view-section';
         header.textContent = sessionLabel;
         container.appendChild(header);
 
-        sessions.forEach(s => {
-          const idx = _searchResults.length;
-          _searchResults.push({ type: 'session', data: s });
-          const parentGoal = getGoalForSession(s.key);
-          container.appendChild(buildSearchItem(idx,
-            getSessionIcon(s),
-            getSessionName(s),
-            parentGoal ? parentGoal.title : s.key
-          ));
+        // Separate agents and subagents
+        var agents = [];
+        var subagentsByParent = {};
+        sessions.forEach(function(s) {
+          if (s.isSubagent) {
+            var pk = getSessionParentKey(s.key) || '_orphan';
+            if (!subagentsByParent[pk]) subagentsByParent[pk] = [];
+            subagentsByParent[pk].push(s);
+          } else {
+            agents.push(s);
+          }
+        });
+
+        var usedParentKeys = {};
+
+        // Render agents with their subagents nested below
+        agents.forEach(function(a) {
+          var idx = _searchResults.length;
+          _searchResults.push({ type: 'session', data: a });
+          var meta = buildSessionMeta(a);
+          var subs = subagentsByParent[a.key] || [];
+          var row = buildSearchRow(idx, getSessionIcon(a), getSessionName(a), meta, false);
+          if (subs.length > 0) {
+            var badge = document.createElement('span');
+            badge.className = 'search-row-badge';
+            badge.textContent = subs.length + ' sub';
+            row.querySelector('.search-row-info').appendChild(badge);
+          }
+          container.appendChild(row);
+          usedParentKeys[a.key] = true;
+
+          subs.forEach(function(sub) {
+            var si = _searchResults.length;
+            _searchResults.push({ type: 'session', data: sub });
+            container.appendChild(buildSearchRow(si, getSessionIcon(sub), getSessionName(sub), buildSessionMeta(sub), true));
+          });
+        });
+
+        // Orphan subagents (parent not in results)
+        Object.keys(subagentsByParent).forEach(function(pk) {
+          if (usedParentKeys[pk]) return;
+          var subs = subagentsByParent[pk];
+          // Show a parent header row (non-clickable)
+          var parentLabel = pk;
+          // Try to find the parent session name from client state
+          var parentSession = (state.sessions || []).find(function(s) { return s.key === pk; });
+          if (parentSession) parentLabel = getSessionName(parentSession);
+
+          var parentRow = document.createElement('div');
+          parentRow.className = 'search-view-row parent-header';
+          var iconEl = document.createElement('span');
+          iconEl.className = 'search-row-icon';
+          iconEl.textContent = '\u26A1';
+          parentRow.appendChild(iconEl);
+          var infoEl = document.createElement('div');
+          infoEl.className = 'search-row-info';
+          var nameEl = document.createElement('div');
+          nameEl.className = 'search-row-name';
+          nameEl.textContent = parentLabel;
+          infoEl.appendChild(nameEl);
+          var badge = document.createElement('span');
+          badge.className = 'search-row-badge';
+          badge.textContent = subs.length + ' subagent' + (subs.length > 1 ? 's' : '');
+          infoEl.appendChild(badge);
+          parentRow.appendChild(infoEl);
+          container.appendChild(parentRow);
+
+          subs.forEach(function(sub) {
+            var si = _searchResults.length;
+            _searchResults.push({ type: 'session', data: sub });
+            container.appendChild(buildSearchRow(si, getSessionIcon(sub), getSessionName(sub), buildSessionMeta(sub), true));
+          });
         });
       }
 
+      // Count
+      var total = _searchResults.length;
+      document.getElementById('searchViewCount').textContent = total > 0 ? total + ' result' + (total > 1 ? 's' : '') : '';
+
       if (!goals.length && !sessions.length) {
-        const empty = document.createElement('div');
-        empty.className = 'search-palette-empty';
-        empty.textContent = 'No results found';
+        var empty = document.createElement('div');
+        empty.className = 'search-view-empty';
+        empty.textContent = isRecent ? 'No recent items' : 'No results found';
         container.appendChild(empty);
       }
 
       _searchSelectedIdx = -1;
     }
 
-    function buildSearchItem(idx, icon, name, meta) {
-      const item = document.createElement('div');
-      item.className = 'search-palette-item';
-      item.dataset.idx = idx;
-      item.onclick = () => selectSearchResult(idx);
-      item.onmouseenter = () => highlightSearchResult(idx);
+    function buildSessionMeta(s) {
+      var parts = [];
+      if (s.isSubagent) parts.push('\u26A1 subagent');
+      var parentGoal = getGoalForSession(s.key);
+      if (s.goalTitle || (parentGoal && parentGoal.title)) parts.push('\uD83C\uDFAF ' + escapeHtml(s.goalTitle || parentGoal.title));
+      if (s.condoName) parts.push('\uD83C\uDFE0 ' + escapeHtml(s.condoName));
+      if (!parts.length) parts.push(s.label || s.key);
+      return parts.join(' \u00B7 ');
+    }
 
-      const iconEl = document.createElement('span');
-      iconEl.className = 'search-palette-item-icon';
+    function buildSearchRow(idx, icon, name, meta, isSubagent) {
+      var item = document.createElement('div');
+      item.className = 'search-view-row' + (isSubagent ? ' subagent' : '');
+      item.dataset.idx = idx;
+      item.onclick = function() { selectSearchResult(idx); };
+      item.onmouseenter = function() { highlightSearchResult(idx); };
+
+      var iconEl = document.createElement('span');
+      iconEl.className = 'search-row-icon';
       iconEl.textContent = icon;
       item.appendChild(iconEl);
 
-      const info = document.createElement('div');
-      info.className = 'search-palette-item-info';
+      var info = document.createElement('div');
+      info.className = 'search-row-info';
 
-      const nameEl = document.createElement('div');
-      nameEl.className = 'search-palette-item-name';
+      var nameEl = document.createElement('div');
+      nameEl.className = 'search-row-name';
       nameEl.textContent = name;
       info.appendChild(nameEl);
 
       if (meta) {
-        const metaEl = document.createElement('div');
-        metaEl.className = 'search-palette-item-meta';
+        var metaEl = document.createElement('div');
+        metaEl.className = 'search-row-meta';
         metaEl.textContent = meta;
         info.appendChild(metaEl);
       }
@@ -6393,41 +6528,43 @@ Response format:
 
     function highlightSearchResult(idx) {
       _searchSelectedIdx = idx;
-      document.querySelectorAll('.search-palette-item').forEach(el => {
+      document.querySelectorAll('.search-view-row[data-idx]').forEach(function(el) {
         el.classList.toggle('selected', parseInt(el.dataset.idx) === idx);
       });
     }
 
     function selectSearchResult(idx) {
-      const entry = _searchResults[idx];
+      var entry = _searchResults[idx];
       if (!entry) return;
-      closeSearchPalette();
 
       if (entry.type === 'goal') {
+        closeSearchView();
         openGoal(entry.data.id);
       } else if (entry.type === 'session') {
-        // Inject session into state.sessions if not present (handles sessions beyond the client's 50)
-        const existing = state.sessions.find(s => s.key === entry.data.key);
+        // Inject session into state.sessions if not present
+        var existing = state.sessions.find(function(s) { return s.key === entry.data.key; });
         if (!existing) {
           state.sessions.push(entry.data);
         }
-        openSession(entry.data.key);
+        // Open in detail panel (side preview)
+        openDetailPanel(entry.data.key, { fromRouter: true });
+        highlightSearchResult(idx);
       }
     }
 
-    function handleSearchPaletteKey(e) {
+    function handleSearchViewKey(e) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        const next = _searchSelectedIdx + 1;
+        var next = _searchSelectedIdx + 1;
         if (next < _searchResults.length) highlightSearchResult(next);
         else if (_searchResults.length > 0) highlightSearchResult(0);
-        scrollSelectedIntoView();
+        scrollSearchSelectedIntoView();
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        const prev = _searchSelectedIdx - 1;
+        var prev = _searchSelectedIdx - 1;
         if (prev >= 0) highlightSearchResult(prev);
         else if (_searchResults.length > 0) highlightSearchResult(_searchResults.length - 1);
-        scrollSelectedIntoView();
+        scrollSearchSelectedIntoView();
       } else if (e.key === 'Enter') {
         e.preventDefault();
         if (_searchSelectedIdx >= 0) {
@@ -6436,12 +6573,12 @@ Response format:
       } else if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        closeSearchPalette();
+        closeSearchView();
       }
     }
 
-    function scrollSelectedIntoView() {
-      const sel = document.querySelector('.search-palette-item.selected');
+    function scrollSearchSelectedIntoView() {
+      var sel = document.querySelector('.search-view-row.selected');
       if (sel) sel.scrollIntoView({ block: 'nearest' });
     }
 
@@ -6449,10 +6586,10 @@ Response format:
     // KEYBOARD SHORTCUTS
     // ═══════════════════════════════════════════════════════════════
     document.addEventListener('keydown', (e) => {
-      // Cmd+K / Ctrl+K -> search palette
+      // Cmd+K / Ctrl+K -> search view
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        toggleSearchPalette();
+        toggleSearchView();
         return;
       }
 
