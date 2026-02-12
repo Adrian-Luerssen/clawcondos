@@ -634,9 +634,16 @@
       multiSelectMode: false,
       selectedSessions: new Set(),
       
-      // Auth - loaded from config or localStorage
-      // Token should be set via config.json or login modal, NOT hardcoded
-      token: localStorage.getItem('sharp_token') || null,
+      // Auth - loaded from URL param > localStorage
+      // Token should be set via config.json, URL param, or login modal, NOT hardcoded
+      token: (() => {
+        const urlToken = new URLSearchParams(window.location.search).get('token');
+        if (urlToken) {
+          localStorage.setItem('sharp_token', urlToken);
+          return urlToken;
+        }
+        return localStorage.getItem('sharp_token') || null;
+      })(),
       gatewayUrl: (() => {
         // Priority: localStorage > config > auto-detect
         const saved = localStorage.getItem('sharp_gateway');
@@ -1342,7 +1349,7 @@
       // Only include auth if we have a token/password
       // NOTE: OpenClaw Gateway can use token or password auth depending on config.
       if (state.token) {
-        connectParams.auth = { password: state.token };
+        connectParams.auth = { token: state.token };
       }
       
       const connectFrame = {
