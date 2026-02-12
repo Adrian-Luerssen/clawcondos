@@ -2862,8 +2862,33 @@
       
       container.innerHTML = '<div class="message system">Loading...</div>';
       try {
-        var result = await rpcCall('chat.history', { sessionKey: sessionKey, limit: 100 });
-        var messages = (result && result.messages) || [];
+        var messages = [];
+        
+        // PM mode: use pm.getHistory for proper PM conversation history
+        if (state.goalChatMode === 'pm') {
+          var goal = state.goals.find(function(g) { return g.id === state.currentGoalOpenId; });
+          var condoId = goal && goal.condoId;
+          
+          if (condoId) {
+            try {
+              var pmResult = await rpcCall('pm.getHistory', { condoId: condoId, limit: 100 });
+              messages = (pmResult && pmResult.messages) || [];
+            } catch (pmErr) {
+              // Fallback to chat.history if pm.getHistory not available
+              console.warn('pm.getHistory failed, falling back to chat.history:', pmErr);
+              var result = await rpcCall('chat.history', { sessionKey: sessionKey, limit: 100 });
+              messages = (result && result.messages) || [];
+            }
+          } else {
+            // No condoId, fallback to chat.history
+            var result = await rpcCall('chat.history', { sessionKey: sessionKey, limit: 100 });
+            messages = (result && result.messages) || [];
+          }
+        } else {
+          // Team mode: use chat.history
+          var result = await rpcCall('chat.history', { sessionKey: sessionKey, limit: 100 });
+          messages = (result && result.messages) || [];
+        }
         
         // Check if agents are working (for Team mode)
         var workingIndicator = '';
@@ -3687,6 +3712,59 @@
     }
     
     /**
+     * Append a local message to the goal chat (optimistic UI)
+     */
+    function appendGoalChatMessage(role, content, isThinking) {
+      const container = document.getElementById('goal_chatMessages');
+      if (!container) return;
+      
+      const timeHtml = formatMessageTime(new Date());
+      const messageId = 'goal-msg-' + Date.now();
+      
+      let html = '';
+      if (isThinking) {
+        html = '<div class="message assistant thinking-indicator" id="' + messageId + '">' +
+          '<div class="message-content"><span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span> Thinking...</div>' +
+          '</div>';
+      } else if (role === 'user') {
+        html = '<div class="message user" id="' + messageId + '">' +
+          '<div class="message-content">' + formatMessage(content) + '</div>' +
+          '<div class="message-time">' + timeHtml + '</div>' +
+          '</div>';
+      } else if (role === 'assistant') {
+        html = '<div class="message assistant" id="' + messageId + '">' +
+          '<div class="message-content">' + formatMessage(content) + '</div>' +
+          '<div class="message-time">' + timeHtml + '</div>' +
+          '</div>';
+      } else if (role === 'error') {
+        html = '<div class="message system error" id="' + messageId + '" style="color: var(--red);">' +
+          '<div class="message-content">⚠️ ' + escapeHtml(content) + '</div>' +
+          '</div>';
+      }
+      
+      container.insertAdjacentHTML('beforeend', html);
+      
+      // Scroll to bottom
+      const scrollParent = container.parentElement;
+      setTimeout(function() {
+        container.scrollTop = container.scrollHeight;
+        if (scrollParent) scrollParent.scrollTop = scrollParent.scrollHeight;
+      }, 50);
+      
+      return messageId;
+    }
+    
+    /**
+     * Remove thinking indicator from goal chat
+     */
+    function removeGoalChatThinking() {
+      const container = document.getElementById('goal_chatMessages');
+      if (!container) return;
+      const thinking = container.querySelector('.thinking-indicator');
+      if (thinking) thinking.remove();
+    }
+    
+    /**
      * Send message in current chat mode (PM or Team)
      */
     async function sendGoalChatMessage() {
@@ -3697,7 +3775,7 @@
       if (!message || state.pmChatPendingResponse) return;
       
       const sessionKey = state.goalChatSessionKey;
-      if (!sessionKey) {
+      if (!sessionKey && state.goalChatMode !== 'pm') {
         showToast('No active session', 'warning');
         return;
       }
@@ -3708,36 +3786,44 @@
       
       try {
         if (state.goalChatMode === 'pm') {
-          // PM mode: use pm.chat RPC if available, fallback to chat.send
+          // PM mode: Optimistic UI - show user message immediately
+          appendGoalChatMessage('user', message);
+          appendGoalChatMessage(null, null, true); // Show thinking indicator
+          
           try {
             const result = await rpcCall('pm.chat', {
-              goalId: state.currentGoalOpenId,
+              condoId: state.goals.find(g => g.id === state.currentGoalOpenId)?.condoId,
               message: message,
-            }, 60000);
+            }, 120000);
+            
+            // Remove thinking indicator and show response
+            removeGoalChatThinking();
+            
+            if (result?.response) {
+              appendGoalChatMessage('assistant', result.response);
+            }
             
             if (result?.planUpdated) {
               await loadGoals();
               renderGoalPane();
             }
           } catch (e) {
-            // Fallback to direct chat.send
-            await rpcCall('chat.send', {
-              sessionKey: sessionKey,
-              message: message,
-              idempotencyKey: `goal-pm-${Date.now()}`
-            }, 60000);
+            // Remove thinking indicator and show error
+            removeGoalChatThinking();
+            appendGoalChatMessage('error', 'Failed to get response: ' + (e.message || 'Unknown error'));
+            console.error('PM chat error:', e);
           }
         } else {
-          // Team mode: send to selected session
+          // Team mode: send to selected session (existing behavior)
           await rpcCall('chat.send', {
             sessionKey: sessionKey,
             message: message,
             idempotencyKey: `goal-team-${Date.now()}`
           }, 60000);
+          
+          // Refresh chat after sending
+          setTimeout(() => renderGoalChat(), 500);
         }
-        
-        // Refresh chat after sending
-        setTimeout(() => renderGoalChat(), 500);
       } catch (err) {
         console.error('Goal chat send error:', err);
         showToast('Failed to send: ' + (err.message || 'Unknown error'), 'error');
