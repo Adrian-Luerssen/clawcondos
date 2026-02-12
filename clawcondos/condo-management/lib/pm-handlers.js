@@ -6,6 +6,41 @@
 import { getPmSession, getAgentForRole } from './agent-roles.js';
 import { getPmSkillContext } from './skill-injector.js';
 
+/** Default max history entries per condo */
+const DEFAULT_HISTORY_LIMIT = 100;
+
+/**
+ * Get or initialize PM chat history for a condo
+ * @param {object} condo - Condo object
+ * @returns {Array} Chat history array
+ */
+function getCondoPmHistory(condo) {
+  if (!Array.isArray(condo.pmChatHistory)) {
+    condo.pmChatHistory = [];
+  }
+  return condo.pmChatHistory;
+}
+
+/**
+ * Add a message to PM chat history
+ * @param {object} condo - Condo object
+ * @param {string} role - 'user' or 'assistant'
+ * @param {string} content - Message content
+ * @param {number} [maxHistory] - Max entries to keep
+ */
+function addToHistory(condo, role, content, maxHistory = DEFAULT_HISTORY_LIMIT) {
+  const history = getCondoPmHistory(condo);
+  history.push({
+    role,
+    content,
+    timestamp: Date.now(),
+  });
+  // Trim old entries if over limit
+  while (history.length > maxHistory) {
+    history.shift();
+  }
+}
+
 /**
  * Create PM RPC handlers
  * @param {object} store - Goals store instance
@@ -21,7 +56,7 @@ export function createPmHandlers(store, options = {}) {
   /**
    * pm.chat - Send a message to the PM agent session and get response
    * Params: { condoId: string, message: string, pmSession?: string }
-   * Response: { response: string, pmSession: string }
+   * Response: { response: string, pmSession: string, history: Array }
    */
   handlers['pm.chat'] = async ({ params, respond }) => {
     const { condoId, message, pmSession: overrideSession } = params || {};
@@ -41,6 +76,11 @@ export function createPmHandlers(store, options = {}) {
       if (!condo) {
         return respond(false, null, `Condo ${condoId} not found`);
       }
+
+      // Save user message to history BEFORE sending
+      const userMessage = message.trim();
+      addToHistory(condo, 'user', userMessage);
+      store.save(data);
 
       // Use override session, or resolve via configurable hierarchy
       const targetSession = overrideSession || getPmSession(store, condoId);
@@ -74,7 +114,7 @@ export function createPmHandlers(store, options = {}) {
         'User Message:',
       ].filter(line => line != null).join('\n');
 
-      const fullMessage = `${contextPrefix}\n${message.trim()}`;
+      const fullMessage = `${contextPrefix}\n${userMessage}`;
 
       // Send to PM session and wait for response
       const response = await sendToSession(targetSession, {
@@ -84,13 +124,27 @@ export function createPmHandlers(store, options = {}) {
         expectResponse: true,
       });
 
+      const responseText = response?.text || response?.message || 'No response received';
+
+      // Save assistant response to history
+      const dataAfter = store.load();
+      const condoAfter = dataAfter.condos.find(c => c.id === condoId);
+      if (condoAfter) {
+        addToHistory(condoAfter, 'assistant', responseText);
+        store.save(dataAfter);
+      }
+
       if (logger) {
         logger.info(`pm.chat: sent to ${targetSession} for condo ${condo.name}`);
       }
 
+      // Return last N messages for UI
+      const history = getCondoPmHistory(condoAfter || condo).slice(-20);
+
       respond(true, {
-        response: response?.text || response?.message || 'No response received',
+        response: responseText,
         pmSession: targetSession,
+        history,
       });
     } catch (err) {
       if (logger) {
@@ -195,6 +249,81 @@ export function createPmHandlers(store, options = {}) {
         agentId,
         sessionKey: pmSession,
         role: 'pm',
+      });
+    } catch (err) {
+      respond(false, null, err.message);
+    }
+  };
+
+  /**
+   * pm.getHistory - Get PM chat history for a condo
+   * Params: { condoId: string, limit?: number }
+   * Response: { messages: Array, pmSession: string }
+   */
+  handlers['pm.getHistory'] = ({ params, respond }) => {
+    const { condoId, limit = 50 } = params || {};
+
+    if (!condoId) {
+      return respond(false, null, 'condoId is required');
+    }
+
+    try {
+      const data = store.load();
+      const condo = data.condos.find(c => c.id === condoId);
+
+      if (!condo) {
+        return respond(false, null, `Condo ${condoId} not found`);
+      }
+
+      const history = getCondoPmHistory(condo);
+      const messages = history.slice(-Math.min(limit, DEFAULT_HISTORY_LIMIT));
+      const pmSession = getPmSession(store, condoId);
+
+      respond(true, {
+        messages,
+        pmSession,
+        condoId,
+        condoName: condo.name,
+        total: history.length,
+      });
+    } catch (err) {
+      respond(false, null, err.message);
+    }
+  };
+
+  /**
+   * pm.clearHistory - Clear PM chat history for a condo
+   * Params: { condoId: string }
+   * Response: { ok: boolean, cleared: number }
+   */
+  handlers['pm.clearHistory'] = ({ params, respond }) => {
+    const { condoId } = params || {};
+
+    if (!condoId) {
+      return respond(false, null, 'condoId is required');
+    }
+
+    try {
+      const data = store.load();
+      const condo = data.condos.find(c => c.id === condoId);
+
+      if (!condo) {
+        return respond(false, null, `Condo ${condoId} not found`);
+      }
+
+      const previousCount = (condo.pmChatHistory || []).length;
+      condo.pmChatHistory = [];
+      condo.updatedAtMs = Date.now();
+      store.save(data);
+
+      if (logger) {
+        logger.info(`pm.clearHistory: cleared ${previousCount} messages for condo ${condo.name}`);
+      }
+
+      respond(true, {
+        ok: true,
+        cleared: previousCount,
+        condoId,
       });
     } catch (err) {
       respond(false, null, err.message);
