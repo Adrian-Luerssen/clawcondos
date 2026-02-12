@@ -171,4 +171,293 @@ describe('PM Handlers - Chat History', () => {
     await handlers['pm.clearHistory']({ params: { condoId: 'nonexistent' }, respond: r1 });
     assert(!gr1().success, 'Should fail for nonexistent condo');
   });
+
+  test('pm.chat detects plan in response', async () => {
+    // Create handlers with mock that returns a plan
+    const mockSendWithPlan = async () => ({
+      text: `## Plan\n\n| Task | Agent |\n|------|-------|\n| Create form | Félix |\n\nAwaiting approval`
+    });
+    
+    const handlersWithPlan = createPmHandlers(store, {
+      sendToSession: mockSendWithPlan,
+      logger: { info: () => {}, error: () => {} }
+    });
+    
+    const condoId = setupCondo('plan-test-condo');
+    const { respond, getResult } = createResponder();
+    
+    await handlersWithPlan['pm.chat']({
+      params: { condoId, message: 'Create a plan' },
+      respond
+    });
+    
+    const result = getResult();
+    assert(result.success, 'Chat should succeed');
+    assert(result.data.hasPlan === true, 'Should detect plan in response');
+  });
+
+  test('pm.chat does not detect plan in regular response', async () => {
+    const condoId = setupCondo('no-plan-condo');
+    const { respond, getResult } = createResponder();
+    
+    await handlers['pm.chat']({
+      params: { condoId, message: 'Just a question' },
+      respond
+    });
+    
+    const result = getResult();
+    assert(result.success, 'Chat should succeed');
+    assert(result.data.hasPlan === false, 'Should not detect plan in regular response');
+  });
+});
+
+describe('PM Handlers - createTasksFromPlan', () => {
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'pm-handlers-test-'));
+    store = createGoalsStore(tempDir);
+    
+    const mockSendToSession = async (session, payload) => {
+      return { text: `Mock response` };
+    };
+    
+    handlers = createPmHandlers(store, { 
+      sendToSession: mockSendToSession,
+      logger: { info: () => {}, error: () => {} }
+    });
+  });
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true });
+    }
+  });
+
+  // Helper to create a goal
+  function setupGoal(condoId = 'test-condo') {
+    const data = store.load();
+    data.condos.push({
+      id: condoId,
+      name: 'Test Condo',
+      createdAtMs: Date.now(),
+    });
+    const goalId = store.newId('goal');
+    data.goals.push({
+      id: goalId,
+      title: 'Test Goal',
+      condoId,
+      tasks: [],
+      createdAtMs: Date.now(),
+    });
+    store.save(data);
+    return { condoId, goalId };
+  }
+
+  test('creates tasks from provided planContent', async () => {
+    const { goalId } = setupGoal();
+    const planContent = `
+## Plan
+
+| Task | Agent | Time |
+|------|-------|------|
+| Create login page | Félix 🎨 | 2h |
+| Add auth endpoint | Blake 🔧 | 1h |
+`;
+    
+    const { respond, getResult } = createResponder();
+    await handlers['pm.createTasksFromPlan']({
+      params: { goalId, planContent },
+      respond
+    });
+    
+    const result = getResult();
+    assert(result.success, 'Should succeed');
+    assert.equal(result.data.tasksCreated, 2, 'Should create 2 tasks');
+    assert.equal(result.data.tasks[0].text, 'Create login page');
+    assert.equal(result.data.tasks[0].assignedAgent, 'frontend');
+    assert.equal(result.data.tasks[1].text, 'Add auth endpoint');
+    assert.equal(result.data.tasks[1].assignedAgent, 'backend');
+    
+    // Verify tasks are in store
+    const data = store.load();
+    const goal = data.goals.find(g => g.id === goalId);
+    assert.equal(goal.tasks.length, 2, 'Goal should have 2 tasks');
+  });
+
+  test('uses goal.plan.content when planContent not provided', async () => {
+    const data = store.load();
+    data.condos.push({
+      id: 'plan-condo',
+      name: 'Plan Condo',
+      createdAtMs: Date.now(),
+    });
+    const goalId = store.newId('goal');
+    data.goals.push({
+      id: goalId,
+      title: 'Goal with Plan',
+      condoId: 'plan-condo',
+      tasks: [],
+      plan: {
+        status: 'awaiting_approval',
+        content: `| Task | Agent |\n|------|-------|\n| Test task | Quinn |`,
+      },
+      createdAtMs: Date.now(),
+    });
+    store.save(data);
+    
+    const { respond, getResult } = createResponder();
+    await handlers['pm.createTasksFromPlan']({
+      params: { goalId },
+      respond
+    });
+    
+    const result = getResult();
+    assert(result.success, 'Should succeed');
+    assert.equal(result.data.tasksCreated, 1, 'Should create 1 task');
+    assert.equal(result.data.tasks[0].text, 'Test task');
+    assert.equal(result.data.tasks[0].assignedAgent, 'tester');
+    
+    // Verify plan status updated to approved
+    const afterData = store.load();
+    const goal = afterData.goals.find(g => g.id === goalId);
+    assert.equal(goal.plan.status, 'approved', 'Plan should be approved');
+  });
+
+  test('uses PM chat history when no plan content', async () => {
+    const data = store.load();
+    const condoId = 'chat-history-condo';
+    data.condos.push({
+      id: condoId,
+      name: 'Chat History Condo',
+      pmChatHistory: [
+        { role: 'user', content: 'Create a plan' },
+        { role: 'assistant', content: '## Plan\n\n| Task | Agent |\n|------|-------|\n| Deploy app | Devon |' },
+      ],
+      createdAtMs: Date.now(),
+    });
+    const goalId = store.newId('goal');
+    data.goals.push({
+      id: goalId,
+      title: 'Goal from Chat',
+      condoId,
+      tasks: [],
+      createdAtMs: Date.now(),
+    });
+    store.save(data);
+    
+    const { respond, getResult } = createResponder();
+    await handlers['pm.createTasksFromPlan']({
+      params: { goalId },
+      respond
+    });
+    
+    const result = getResult();
+    assert(result.success, 'Should succeed');
+    assert.equal(result.data.tasksCreated, 1, 'Should create 1 task');
+    assert.equal(result.data.tasks[0].text, 'Deploy app');
+    assert.equal(result.data.tasks[0].assignedAgent, 'devops');
+  });
+
+  test('fails when goalId not provided', async () => {
+    const { respond, getResult } = createResponder();
+    await handlers['pm.createTasksFromPlan']({
+      params: {},
+      respond
+    });
+    
+    const result = getResult();
+    assert(!result.success, 'Should fail');
+    assert(result.error.includes('goalId'), 'Error should mention goalId');
+  });
+
+  test('fails when goal not found', async () => {
+    const { respond, getResult } = createResponder();
+    await handlers['pm.createTasksFromPlan']({
+      params: { goalId: 'nonexistent' },
+      respond
+    });
+    
+    const result = getResult();
+    assert(!result.success, 'Should fail');
+    assert(result.error.includes('not found'), 'Error should mention not found');
+  });
+
+  test('fails when no plan content available', async () => {
+    const { goalId } = setupGoal();
+    
+    const { respond, getResult } = createResponder();
+    await handlers['pm.createTasksFromPlan']({
+      params: { goalId },
+      respond
+    });
+    
+    const result = getResult();
+    assert(!result.success, 'Should fail when no content available');
+  });
+
+  test('fails when content has no detectable plan', async () => {
+    const { goalId } = setupGoal();
+    
+    const { respond, getResult } = createResponder();
+    await handlers['pm.createTasksFromPlan']({
+      params: { goalId, planContent: 'Just regular text, no plan here' },
+      respond
+    });
+    
+    const result = getResult();
+    assert(!result.success, 'Should fail when no plan detected');
+  });
+});
+
+describe('PM Handlers - detectPlan RPC', () => {
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'pm-handlers-test-'));
+    store = createGoalsStore(tempDir);
+    handlers = createPmHandlers(store, { 
+      logger: { info: () => {}, error: () => {} }
+    });
+  });
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true });
+    }
+  });
+
+  test('detects plan in content', async () => {
+    const { respond, getResult } = createResponder();
+    await handlers['pm.detectPlan']({
+      params: { content: '## Plan\n\n| Task | Agent |\n|------|-------|\n| Build UI | Félix |' },
+      respond
+    });
+    
+    const result = getResult();
+    assert(result.success, 'Should succeed');
+    assert(result.data.hasPlan === true, 'Should detect plan');
+    assert.equal(result.data.taskCount, 1, 'Should find 1 task');
+  });
+
+  test('returns false for non-plan content', async () => {
+    const { respond, getResult } = createResponder();
+    await handlers['pm.detectPlan']({
+      params: { content: 'Just a regular message' },
+      respond
+    });
+    
+    const result = getResult();
+    assert(result.success, 'Should succeed');
+    assert(result.data.hasPlan === false, 'Should not detect plan');
+    assert.equal(result.data.taskCount, 0, 'Should find 0 tasks');
+  });
+
+  test('fails without content', async () => {
+    const { respond, getResult } = createResponder();
+    await handlers['pm.detectPlan']({
+      params: {},
+      respond
+    });
+    
+    const result = getResult();
+    assert(!result.success, 'Should fail');
+    assert(result.error.includes('content'), 'Error should mention content');
+  });
 });

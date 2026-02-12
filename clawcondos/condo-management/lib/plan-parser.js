@@ -1,0 +1,396 @@
+/**
+ * Plan Parser - Parse PM plans from markdown into tasks
+ * Extracts tasks from tables and lists with agent assignments
+ */
+
+/**
+ * Agent name patterns mapped to role identifiers
+ * Supports emoji variants and common aliases
+ */
+const AGENT_MAPPINGS = {
+  // Frontend agent
+  'félix': 'frontend',
+  'felix': 'frontend',
+  'félix 🎨': 'frontend',
+  'felix 🎨': 'frontend',
+  '🎨 félix': 'frontend',
+  '🎨 felix': 'frontend',
+  'frontend': 'frontend',
+  'front': 'frontend',
+  
+  // Backend agent
+  'blake': 'backend',
+  'blake 🔧': 'backend',
+  '🔧 blake': 'backend',
+  'backend': 'backend',
+  'back': 'backend',
+  
+  // Designer agent
+  'dana': 'designer',
+  'dana ✨': 'designer',
+  '✨ dana': 'designer',
+  'designer': 'designer',
+  'design': 'designer',
+  
+  // QA/Tester agent
+  'quinn': 'tester',
+  'quinn 🧪': 'tester',
+  '🧪 quinn': 'tester',
+  'qa': 'tester',
+  'tester': 'tester',
+  'test': 'tester',
+  
+  // DevOps agent
+  'devon': 'devops',
+  'devon 🚀': 'devops',
+  '🚀 devon': 'devops',
+  'devops': 'devops',
+  'ops': 'devops',
+  'infra': 'devops',
+  
+  // PM agent (Claudia)
+  'claudia': 'pm',
+  'claudia 📋': 'pm',
+  '📋 claudia': 'pm',
+  'pm': 'pm',
+  'project manager': 'pm',
+};
+
+/**
+ * Normalize agent name to a role identifier
+ * @param {string} agentName - Raw agent name from plan
+ * @returns {string|null} Role identifier or null if not found
+ */
+export function normalizeAgentToRole(agentName) {
+  if (!agentName || typeof agentName !== 'string') {
+    return null;
+  }
+  
+  const normalized = agentName.trim().toLowerCase();
+  
+  // Direct lookup
+  if (AGENT_MAPPINGS[normalized]) {
+    return AGENT_MAPPINGS[normalized];
+  }
+  
+  // Partial match - check if the normalized name contains any key
+  for (const [key, role] of Object.entries(AGENT_MAPPINGS)) {
+    if (normalized.includes(key) || key.includes(normalized)) {
+      return role;
+    }
+  }
+  
+  // Return as-is if no mapping found (could be a custom role)
+  return agentName.trim() || null;
+}
+
+/**
+ * Parse tasks from a markdown table
+ * Expected formats:
+ * | # | Task | Agent | Time |
+ * | 1 | Do something | Félix 🎨 | 2h |
+ * 
+ * @param {string} content - Markdown content
+ * @returns {Array<{text: string, agent: string|null, time: string|null, description: string}>}
+ */
+export function parseTasksFromTable(content) {
+  if (!content || typeof content !== 'string') {
+    return [];
+  }
+  
+  const tasks = [];
+  const lines = content.split('\n');
+  
+  // Find table headers to determine column mapping
+  let headerIndices = { task: -1, agent: -1, time: -1, description: -1 };
+  let inTable = false;
+  let headerProcessed = false;
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    // Skip empty lines
+    if (!trimmed) {
+      inTable = false;
+      headerProcessed = false;
+      continue;
+    }
+    
+    // Check if this is a table row (starts and ends with |)
+    if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
+      inTable = false;
+      headerProcessed = false;
+      continue;
+    }
+    
+    // Parse columns
+    const columns = trimmed.split('|').map(c => c.trim()).filter(c => c !== '');
+    
+    // Skip separator rows (----)
+    if (columns.every(c => /^[-:]+$/.test(c))) {
+      continue;
+    }
+    
+    // Process header row
+    if (!headerProcessed) {
+      columns.forEach((col, idx) => {
+        const lc = col.toLowerCase();
+        if (lc.includes('task') || lc.includes('tarea') || lc.includes('action')) {
+          headerIndices.task = idx;
+        } else if (lc.includes('agent') || lc.includes('agente') || lc.includes('assignee') || lc.includes('owner') || lc.includes('who')) {
+          headerIndices.agent = idx;
+        } else if (lc.includes('time') || lc.includes('tiempo') || lc.includes('estimate') || lc.includes('duration') || lc.includes('est.')) {
+          headerIndices.time = idx;
+        } else if (lc.includes('description') || lc.includes('descripción') || lc.includes('detail') || lc.includes('notes')) {
+          headerIndices.description = idx;
+        }
+      });
+      headerProcessed = true;
+      inTable = true;
+      continue;
+    }
+    
+    // Process data row
+    if (inTable && headerIndices.task >= 0) {
+      const taskText = columns[headerIndices.task];
+      
+      // Skip if task text is a number (just the row number column)
+      if (!taskText || /^\d+$/.test(taskText)) {
+        // Try to find task in other columns if first was just a number
+        const fallbackTask = columns.find(c => c && !/^\d+$/.test(c) && c.length > 3);
+        if (fallbackTask) {
+          tasks.push({
+            text: fallbackTask,
+            agent: headerIndices.agent >= 0 ? normalizeAgentToRole(columns[headerIndices.agent]) : null,
+            time: headerIndices.time >= 0 ? columns[headerIndices.time] || null : null,
+            description: headerIndices.description >= 0 ? columns[headerIndices.description] || '' : '',
+          });
+        }
+        continue;
+      }
+      
+      tasks.push({
+        text: taskText,
+        agent: headerIndices.agent >= 0 ? normalizeAgentToRole(columns[headerIndices.agent]) : null,
+        time: headerIndices.time >= 0 ? columns[headerIndices.time] || null : null,
+        description: headerIndices.description >= 0 ? columns[headerIndices.description] || '' : '',
+      });
+    }
+  }
+  
+  return tasks;
+}
+
+/**
+ * Parse tasks from markdown lists
+ * Expected formats:
+ * - Task name (agent)
+ * - Task name — agent
+ * - [ ] Task name (agent)
+ * - **Task name** (agent) — description
+ * 
+ * @param {string} content - Markdown content
+ * @returns {Array<{text: string, agent: string|null, description: string}>}
+ */
+export function parseTasksFromLists(content) {
+  if (!content || typeof content !== 'string') {
+    return [];
+  }
+  
+  const tasks = [];
+  const lines = content.split('\n');
+  
+  // Patterns for list items with agent assignment
+  const patterns = [
+    // - Task name (Agent)
+    /^[-*]\s+(?:\[[ xX]?\]\s+)?(.+?)\s*\(([^)]+)\)\s*$/,
+    // - Task name — Agent
+    /^[-*]\s+(?:\[[ xX]?\]\s+)?(.+?)\s*[—–-]\s*([^—–\-]+?)\s*$/,
+    // - **Task name** (Agent)
+    /^[-*]\s+(?:\[[ xX]?\]\s+)?\*\*(.+?)\*\*\s*\(([^)]+)\)\s*$/,
+    // - Task name (Agent) — Description
+    /^[-*]\s+(?:\[[ xX]?\]\s+)?(.+?)\s*\(([^)]+)\)\s*[—–-]\s*(.+?)\s*$/,
+    // Numbered: 1. Task name (Agent)
+    /^\d+\.\s+(.+?)\s*\(([^)]+)\)\s*$/,
+    // Numbered: 1. Task name — Agent
+    /^\d+\.\s+(.+?)\s*[—–-]\s*([^—–\-]+?)\s*$/,
+  ];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    // Skip non-list items
+    if (!trimmed.match(/^[-*\d]/)) {
+      continue;
+    }
+    
+    // Try each pattern
+    for (const pattern of patterns) {
+      const match = trimmed.match(pattern);
+      if (match) {
+        const [, taskText, agent, description] = match;
+        
+        // Clean up task text (remove markdown formatting)
+        const cleanText = taskText.replace(/\*\*/g, '').replace(/`/g, '').trim();
+        
+        // Skip very short tasks (likely not real tasks)
+        if (cleanText.length < 3) {
+          continue;
+        }
+        
+        tasks.push({
+          text: cleanText,
+          agent: normalizeAgentToRole(agent),
+          description: description?.trim() || '',
+        });
+        break;
+      }
+    }
+    
+    // Also try to parse simple list items without agent
+    if (tasks.length === 0 || !patterns.some(p => trimmed.match(p))) {
+      const simpleMatch = trimmed.match(/^[-*]\s+(?:\[[ xX]?\]\s+)?(.{10,})$/);
+      if (simpleMatch && !simpleMatch[1].includes('|')) {
+        // Don't add duplicates
+        const text = simpleMatch[1].replace(/\*\*/g, '').replace(/`/g, '').trim();
+        if (!tasks.find(t => t.text === text)) {
+          // Only add if it looks like a task (not a header or generic text)
+          const looksLikeTask = text.match(/^(create|implement|add|fix|update|build|design|test|review|write|setup|configure|deploy|refactor)/i) ||
+                               text.match(/\d+h?$/) || // Has time estimate
+                               text.length > 15;
+          if (looksLikeTask) {
+            // This is a standalone task without agent - skip for now as we want assigned tasks
+          }
+        }
+      }
+    }
+  }
+  
+  return tasks;
+}
+
+/**
+ * Detect if content contains a plan
+ * Looks for common plan patterns
+ * 
+ * @param {string} content - Content to check
+ * @returns {boolean} True if content appears to contain a plan
+ */
+export function detectPlan(content) {
+  if (!content || typeof content !== 'string') {
+    return false;
+  }
+  
+  const lowerContent = content.toLowerCase();
+  
+  // Check for explicit plan headers
+  const planHeaders = [
+    '## plan',
+    '## tasks',
+    '## task breakdown',
+    '## implementation plan',
+    '## development plan',
+    '## execution plan',
+    '### plan',
+    '### tasks',
+    '# plan',
+    '**plan:**',
+    '**tasks:**',
+    '**task breakdown:**',
+  ];
+  
+  for (const header of planHeaders) {
+    if (lowerContent.includes(header)) {
+      return true;
+    }
+  }
+  
+  // Check for approval markers
+  const approvalMarkers = [
+    'awaiting approval',
+    'awaiting_approval',
+    'pending approval',
+    'please approve',
+    'ready for approval',
+    'approval requested',
+    '⏳ awaiting',
+    'status: awaiting',
+  ];
+  
+  for (const marker of approvalMarkers) {
+    if (lowerContent.includes(marker)) {
+      return true;
+    }
+  }
+  
+  // Check for task tables (| Task | Agent | or similar)
+  const tablePatterns = [
+    /\|\s*#?\s*\|\s*task/i,
+    /\|\s*task\s*\|/i,
+    /\|\s*tarea\s*\|/i,
+    /\|\s*agent\s*\|/i,
+    /\|\s*agente\s*\|/i,
+    /\|\s*assignee\s*\|/i,
+  ];
+  
+  for (const pattern of tablePatterns) {
+    if (pattern.test(content)) {
+      return true;
+    }
+  }
+  
+  // Check for numbered tasks with agents
+  const taskWithAgentPattern = /^\s*\d+\.\s+.+\s*\(.*(félix|felix|blake|dana|quinn|devon|claudia|frontend|backend|designer|tester|devops|pm)/im;
+  if (taskWithAgentPattern.test(content)) {
+    return true;
+  }
+  
+  // Check for list items with agent assignments
+  const listWithAgentPattern = /^[-*]\s+(?:\[[ xX]?\]\s+)?.+\s*\(.*(félix|felix|blake|dana|quinn|devon|frontend|backend|designer)/im;
+  if (listWithAgentPattern.test(content)) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Parse all tasks from a plan (tables + lists)
+ * 
+ * @param {string} content - Plan markdown content
+ * @returns {{tasks: Array<{text: string, agent: string|null, time: string|null, description: string}>, hasPlan: boolean}}
+ */
+export function parseTasksFromPlan(content) {
+  if (!content || typeof content !== 'string') {
+    return { tasks: [], hasPlan: false };
+  }
+  
+  const hasPlan = detectPlan(content);
+  
+  // Parse from both tables and lists
+  const tableTasks = parseTasksFromTable(content);
+  const listTasks = parseTasksFromLists(content);
+  
+  // Merge and dedupe (prefer table tasks as they're more structured)
+  const seenTexts = new Set();
+  const tasks = [];
+  
+  for (const task of [...tableTasks, ...listTasks]) {
+    // Normalize for deduplication
+    const normalizedText = task.text.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!seenTexts.has(normalizedText)) {
+      seenTexts.add(normalizedText);
+      tasks.push(task);
+    }
+  }
+  
+  return { tasks, hasPlan };
+}
+
+/**
+ * Get all supported agent roles
+ * @returns {string[]} List of role identifiers
+ */
+export function getSupportedRoles() {
+  return [...new Set(Object.values(AGENT_MAPPINGS))];
+}

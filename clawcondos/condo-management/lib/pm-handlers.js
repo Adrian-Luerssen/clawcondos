@@ -5,6 +5,7 @@
 
 import { getPmSession, getAgentForRole } from './agent-roles.js';
 import { getPmSkillContext } from './skill-injector.js';
+import { parseTasksFromPlan, detectPlan } from './plan-parser.js';
 
 /** Default max history entries per condo */
 const DEFAULT_HISTORY_LIMIT = 100;
@@ -138,6 +139,9 @@ export function createPmHandlers(store, options = {}) {
         logger.info(`pm.chat: sent to ${targetSession} for condo ${condo.name}`);
       }
 
+      // Detect if response contains a plan
+      const hasPlan = detectPlan(responseText);
+
       // Return last N messages for UI
       const history = getCondoPmHistory(condoAfter || condo).slice(-20);
 
@@ -145,6 +149,7 @@ export function createPmHandlers(store, options = {}) {
         response: responseText,
         pmSession: targetSession,
         history,
+        hasPlan,
       });
     } catch (err) {
       if (logger) {
@@ -324,6 +329,147 @@ export function createPmHandlers(store, options = {}) {
         ok: true,
         cleared: previousCount,
         condoId,
+      });
+    } catch (err) {
+      respond(false, null, err.message);
+    }
+  };
+
+  /**
+   * pm.createTasksFromPlan - Parse a plan and create tasks on a goal
+   * Params: { goalId: string, planContent?: string }
+   * - If planContent is not provided, uses goal.plan.content
+   * - Parses the plan markdown to extract tasks
+   * - Creates tasks in the goal with agent assignments
+   * Response: { ok: true, tasksCreated: number, tasks: [...] }
+   */
+  handlers['pm.createTasksFromPlan'] = ({ params, respond }) => {
+    const { goalId, planContent } = params || {};
+
+    if (!goalId) {
+      return respond(false, null, 'goalId is required');
+    }
+
+    try {
+      const data = store.load();
+      const goal = data.goals.find(g => g.id === goalId);
+
+      if (!goal) {
+        return respond(false, null, `Goal ${goalId} not found`);
+      }
+
+      // Determine content to parse
+      let contentToParse = planContent;
+      
+      if (!contentToParse) {
+        // Try goal.plan.content first
+        if (goal.plan?.content) {
+          contentToParse = goal.plan.content;
+        } else {
+          // Try last PM chat message (assistant response)
+          const condo = data.condos.find(c => c.id === goal.condoId);
+          if (condo?.pmChatHistory?.length) {
+            // Find last assistant message
+            for (let i = condo.pmChatHistory.length - 1; i >= 0; i--) {
+              if (condo.pmChatHistory[i].role === 'assistant') {
+                contentToParse = condo.pmChatHistory[i].content;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      if (!contentToParse) {
+        return respond(false, null, 'No plan content provided and no plan found on goal or in PM chat history');
+      }
+
+      // Parse tasks from the plan
+      const { tasks: parsedTasks, hasPlan } = parseTasksFromPlan(contentToParse);
+
+      if (!hasPlan && parsedTasks.length === 0) {
+        return respond(false, null, 'No plan or tasks detected in content');
+      }
+
+      if (parsedTasks.length === 0) {
+        return respond(false, null, 'Plan detected but could not extract any tasks');
+      }
+
+      // Create tasks on the goal
+      const now = Date.now();
+      const createdTasks = [];
+
+      for (const taskData of parsedTasks) {
+        const task = {
+          id: store.newId('task'),
+          text: taskData.text,
+          description: taskData.description || '',
+          status: 'pending',
+          done: false,
+          priority: null,
+          sessionKey: null,
+          assignedAgent: taskData.agent || null,
+          model: null,
+          dependsOn: [],
+          summary: '',
+          estimatedTime: taskData.time || null,
+          createdAtMs: now,
+          updatedAtMs: now,
+        };
+
+        goal.tasks.push(task);
+        createdTasks.push(task);
+      }
+
+      goal.updatedAtMs = now;
+
+      // Update goal plan status to approved if it was awaiting approval
+      if (goal.plan?.status === 'awaiting_approval' || goal.plan?.status === 'draft') {
+        goal.plan.status = 'approved';
+        goal.plan.approvedAtMs = now;
+        goal.plan.updatedAtMs = now;
+      }
+
+      store.save(data);
+
+      if (logger) {
+        logger.info(`pm.createTasksFromPlan: created ${createdTasks.length} tasks for goal ${goalId}`);
+      }
+
+      respond(true, {
+        ok: true,
+        tasksCreated: createdTasks.length,
+        tasks: createdTasks,
+        goalId,
+      });
+    } catch (err) {
+      if (logger) {
+        logger.error(`pm.createTasksFromPlan error: ${err.message}`);
+      }
+      respond(false, null, err.message);
+    }
+  };
+
+  /**
+   * pm.detectPlan - Check if content contains a plan (utility method)
+   * Params: { content: string }
+   * Response: { hasPlan: boolean, taskCount: number }
+   */
+  handlers['pm.detectPlan'] = ({ params, respond }) => {
+    const { content } = params || {};
+
+    if (!content || typeof content !== 'string') {
+      return respond(false, null, 'content is required');
+    }
+
+    try {
+      const hasPlan = detectPlan(content);
+      const { tasks } = parseTasksFromPlan(content);
+
+      respond(true, {
+        hasPlan,
+        taskCount: tasks.length,
+        tasks: tasks.map(t => ({ text: t.text, agent: t.agent })), // Preview only
       });
     } catch (err) {
       respond(false, null, err.message);
