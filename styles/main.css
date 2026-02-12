@@ -6289,6 +6289,336 @@ a:focus-visible {
   font-size: 0.85em;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   PLAN INTERACTIONS (Phase 5 - Claude Code Integration)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Approve/Reject action buttons */
+.plan-actions {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.plan-action-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.plan-approve-btn {
+  background: var(--green-dim);
+  color: var(--green);
+  border: 1px solid var(--green);
+}
+
+.plan-approve-btn:hover {
+  background: var(--green);
+  color: var(--bg);
+}
+
+.plan-reject-btn {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red);
+}
+
+.plan-reject-btn:hover {
+  background: var(--red);
+  color: var(--bg);
+}
+
+/* Reject feedback form */
+.plan-reject-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--red-dim);
+}
+
+.plan-reject-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.plan-reject-input:focus {
+  outline: none;
+  border-color: var(--red);
+}
+
+.plan-reject-confirm {
+  background: var(--red);
+  color: var(--bg);
+  border: none;
+}
+
+.plan-reject-cancel {
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* Comment/feedback input */
+.plan-comment {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.plan-comment-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: var(--font-base);
+  font-size: 0.85rem;
+  resize: vertical;
+  min-height: 50px;
+}
+
+.plan-comment-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.plan-comment-send {
+  align-self: flex-end;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plan-comment-send:hover {
+  background: var(--accent-hover);
+}
+
+/* Log viewer section */
+.plan-log-section {
+  margin-top: 12px;
+}
+
+.plan-log-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plan-log-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+.plan-log-toggle-icon {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.plan-log-viewer {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.plan-log-empty {
+  color: var(--text-dim);
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+.plan-log-entry {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  line-height: 1.4;
+}
+
+.plan-log-entry:last-child {
+  border-bottom: none;
+}
+
+.plan-log-time {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.plan-log-type {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.plan-log-message {
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* Log type colors */
+.plan-log-info .plan-log-type { color: var(--accent); }
+.plan-log-success .plan-log-type { color: var(--green); }
+.plan-log-warning .plan-log-type { color: var(--yellow); }
+.plan-log-error .plan-log-type { color: var(--red); }
+.plan-log-debug .plan-log-type { color: var(--purple); }
+
+/* ═══════════════════════════════════════════════════════════════
+   PLANS TAB - AGGREGATE VIEW
+   ═══════════════════════════════════════════════════════════════ */
+
+.plans-overview {
+  padding: 16px;
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 16px;
+}
+
+.plans-overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.plans-overview-title {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.plans-overview-stats {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.plans-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plans-task-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plans-task-item:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+  transform: translateX(2px);
+}
+
+.plans-task-status {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.plans-task-status.plan-draft { background: var(--bg-panel); }
+.plans-task-status.plan-awaiting { background: var(--yellow-dim); }
+.plans-task-status.plan-approved { background: var(--green-dim); }
+.plans-task-status.plan-rejected { background: var(--red-dim); }
+.plans-task-status.plan-executing { 
+  background: var(--accent-muted);
+  animation: plan-executing-pulse 1.5s ease-in-out infinite;
+}
+.plans-task-status.plan-completed { background: var(--green-dim); }
+
+.plans-task-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.plans-task-name {
+  font-weight: 500;
+  color: var(--text);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plans-task-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+  font-size: 0.8rem;
+}
+
+.plans-task-label {
+  color: var(--text-secondary);
+}
+
+.plans-task-progress {
+  color: var(--text-dim);
+}
+
+.plans-task-arrow {
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
 
 /* Attached Sessions */
 .goal-sessions {
