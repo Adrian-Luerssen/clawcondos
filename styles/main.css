@@ -2959,6 +2959,19 @@ body {
   color: var(--text-muted);
 }
 
+/* Goal chat textarea - auto-growing with word wrap */
+.goal-chat-textarea {
+  flex: 1;
+  min-height: 38px;
+  max-height: 120px;
+  resize: none;
+  overflow-y: hidden;
+  line-height: 1.4;
+  padding: 8px 12px;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
 .chat-attachments-preview {
   display: flex;
   flex-wrap: wrap;

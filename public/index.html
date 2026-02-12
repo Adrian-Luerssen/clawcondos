@@ -3004,13 +3004,31 @@
         ? 'Chat with PM about goals, tasks, and plans...' 
         : 'Message team...';
       
-      // Static safe HTML
+      // Static safe HTML - using textarea for word-wrap and auto-grow
       mount.innerHTML = '<div class="chat-input-area" style="border-top:1px solid var(--border-subtle);padding:10px 14px;">' +
-        '<div style="display:flex;gap:8px;">' +
-          '<input type="text" class="chat-input" id="goalChatInput" placeholder="' + escapeHtml(placeholder) + '" style="flex:1;" onkeypress="if(event.key===\'Enter\')sendGoalChatMessage()">' +
-          '<button class="send-btn" onclick="sendGoalChatMessage()" style="padding:8px 16px;">Send</button>' +
+        '<div style="display:flex;gap:8px;align-items:flex-end;">' +
+          '<textarea class="chat-input goal-chat-textarea" id="goalChatInput" placeholder="' + escapeHtml(placeholder) + '" rows="1" onkeydown="handleGoalChatKey(event)" oninput="autoResizeGoalChat(this)"></textarea>' +
+          '<button class="send-btn" onclick="sendGoalChatMessage()" style="padding:8px 16px;height:38px;">Send</button>' +
         '</div>' +
       '</div>';
+    }
+
+    // Handle Enter (send) vs Shift+Enter (new line) for goal chat textarea
+    function handleGoalChatKey(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendGoalChatMessage();
+      }
+    }
+
+    // Auto-grow textarea for goal chat (min 1 line, max ~5 lines before scroll)
+    function autoResizeGoalChat(el) {
+      if (!el) return;
+      el.style.height = 'auto';
+      var maxHeight = 120; // ~5 lines
+      var newHeight = Math.min(el.scrollHeight, maxHeight);
+      el.style.height = newHeight + 'px';
+      el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
     }
 
     // Legacy function - redirect to unified handler
@@ -3685,6 +3703,7 @@
       }
       
       input.value = '';
+      input.style.height = 'auto'; // Reset textarea height
       state.pmChatPendingResponse = true;
       
       try {
