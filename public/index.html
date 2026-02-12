@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/styles/media-upload.css">
   <link rel="stylesheet" href="/styles/voice-recorder.css">
   <link rel="stylesheet" href="/styles/plans.css">
+  <link rel="stylesheet" href="/styles/roles.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism-tomorrow.min.css">
 </head>
 <body>
@@ -258,6 +259,42 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
+       ROLE CONFIGURATION MODAL
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="roleConfigModal">
+    <div class="modal role-config-modal">
+      <h2 class="modal-title">⚙️ Role Configuration</h2>
+      <p class="modal-desc">Configure which agents handle each role. Leave empty to use defaults.</p>
+      <table class="role-config-table">
+        <thead>
+          <tr>
+            <th style="width: 40px;"></th>
+            <th>Role</th>
+            <th>Agent ID</th>
+            <th>Resolved</th>
+          </tr>
+        </thead>
+        <tbody id="roleConfigTableBody"></tbody>
+      </table>
+      <div class="role-config-actions">
+        <button class="form-btn" style="background: var(--bg-input); border: 1px solid var(--border);" onclick="hideRoleConfigModal()">Cancel</button>
+        <button class="form-btn" onclick="saveRoleConfig()">Save Changes</button>
+      </div>
+      <div class="form-error" id="roleConfigError"></div>
+    </div>
+  </div>
+
+  <!-- Role Dropdown (floating, appended to body) -->
+  <div class="role-dropdown hidden" id="roleDropdown">
+    <div class="role-dropdown-header">Assign Role</div>
+    <div id="roleDropdownItems"></div>
+    <div class="role-dropdown-divider"></div>
+    <div class="role-dropdown-custom">
+      <input type="text" id="roleDropdownCustom" placeholder="Custom role..." onkeypress="if(event.key==='Enter')assignCustomRole()">
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
        MOBILE HEADER
        ═══════════════════════════════════════════════════════════════ -->
   <header class="mobile-header" id="mobileHeader">
@@ -319,6 +356,7 @@
       <div class="section">
         <div class="section-header">
           <span class="section-title">Agents</span>
+          <button class="section-action" onclick="showRoleConfigModal()" title="Configure roles">⚙️</button>
         </div>
         <div id="agentsList"></div>
       </div>
@@ -1761,6 +1799,30 @@
       if (state.goalChatSessionKey === sessionKey && (runState === 'final' || runState === 'error')) {
         renderGoalChat();
       }
+      
+      // Update Team tab working indicator if in team mode and session is in current goal
+      if (state.goalChatMode === 'team' && state.currentGoalOpenId) {
+        const goal = state.goals.find(g => g.id === state.currentGoalOpenId);
+        if (goal) {
+          const isGoalSession = (goal.tasks || []).some(t => t.sessionKey === sessionKey) ||
+                               (goal.sessions || []).includes(sessionKey);
+          if (isGoalSession) {
+            // Re-render to update working indicator
+            if (runState === 'delta' || runState === 'final' || runState === 'error') {
+              debounceTeamTabRefresh();
+            }
+          }
+        }
+      }
+    }
+    
+    // Debounced team tab refresh to avoid excessive re-renders
+    let teamTabRefreshTimeout = null;
+    function debounceTeamTabRefresh() {
+      if (teamTabRefreshTimeout) clearTimeout(teamTabRefreshTimeout);
+      teamTabRefreshTimeout = setTimeout(() => {
+        renderGoalChat();
+      }, 500);
     }
     
     // Typing indicator (bouncing dots)
@@ -2022,6 +2084,8 @@
       renderSessions();
       renderSessionsGrid();
       updateHeaderStatus();
+      // Also update agents panel to show working status
+      renderAgents();
     }
     
     function getAgentStatus(key) {
@@ -2088,6 +2152,8 @@
         await syncActiveRunsFromServer();
         console.log('[ClawCondos] syncActiveRunsFromServer completed');
         await Promise.all([loadCondos(), loadGoals(), loadSessions(), loadApps(), loadAgents()]);
+        // Load role configuration for agent display
+        loadRoleConfig().catch(err => console.warn('Role config load failed:', err));
         updateOverview();
         updateStatsGrid();
 
@@ -2768,24 +2834,70 @@
       try {
         var result = await rpcCall('chat.history', { sessionKey: sessionKey, limit: 100 });
         var messages = (result && result.messages) || [];
+        
+        // Check if agents are working (for Team mode)
+        var workingIndicator = '';
+        if (state.goalChatMode === 'team') {
+          var workingAgents = getWorkingAgentsForGoal();
+          if (workingAgents.length > 0) {
+            var agentEmojis = workingAgents.map(function(a) {
+              return '<span class="team-working-agent">' + (a.emoji || '🤖') + '</span>';
+            }).join('');
+            workingIndicator = '<div class="team-working-indicator">' +
+              '<div class="working-dots"><div class="working-dot"></div><div class="working-dot"></div><div class="working-dot"></div></div>' +
+              '<span>Agents working...</span>' +
+              '<div class="team-working-agents">' + agentEmojis + '</div>' +
+              '</div>';
+          }
+        }
+        
         if (messages.length > 0) {
-          // All user-generated content is escaped via formatMessage/escapeHtml
-          container.innerHTML = messages.map(function(m) {
+          // Extract agent info from session key
+          var agentMatch = sessionKey.match(/^agent:([^:]+):/);
+          var agentId = agentMatch ? agentMatch[1] : 'unknown';
+          var agent = state.agents.find(function(a) { return a.id === agentId; });
+          var agentEmoji = (agent && agent.identity && agent.identity.emoji) || '🤖';
+          var agentName = (agent && (agent.identity?.name || agent.name)) || agentId;
+          var agentRole = getAgentRole(agentId);
+          var roleInfo = getRoleInfo(agentRole);
+          
+          // Render messages with agent info in Team mode
+          var messagesHtml = messages.map(function(m) {
             var text = extractText(m.content);
             if (!text) return '';
-            var timeHtml = m.timestamp ? '<div class="message-time">' + formatMessageTime(new Date(m.timestamp)) + '</div>' : '';
-            if (m.role === 'user') {
-              return '<div class="message user"><div class="message-content">' + formatMessage(text) + '</div>' + timeHtml + '</div>';
+            var timeHtml = m.timestamp ? formatMessageTime(new Date(m.timestamp)) : '';
+            
+            if (state.goalChatMode === 'team' && m.role === 'assistant') {
+              // Enhanced team message format
+              var roleBadge = roleInfo 
+                ? '<span class="team-message-role" style="background:' + getRoleColor(agentRole) + ';">' + roleInfo.emoji + ' ' + roleInfo.name + '</span>' 
+                : '';
+              
+              return '<div class="team-message">' +
+                '<div class="team-message-avatar">' + agentEmoji + '</div>' +
+                '<div class="team-message-content">' +
+                  '<div class="team-message-header">' +
+                    '<span class="team-message-agent">' + escapeHtml(agentName) + '</span>' +
+                    roleBadge +
+                    '<span class="team-message-time">' + timeHtml + '</span>' +
+                  '</div>' +
+                  '<div class="team-message-text">' + formatMessage(text) + '</div>' +
+                '</div>' +
+              '</div>';
+            } else if (m.role === 'user') {
+              return '<div class="message user"><div class="message-content">' + formatMessage(text) + '</div><div class="message-time">' + timeHtml + '</div></div>';
             } else if (m.role === 'assistant') {
-              return '<div class="message assistant"><div class="message-content">' + formatMessage(text) + '</div>' + timeHtml + '</div>';
+              return '<div class="message assistant"><div class="message-content">' + formatMessage(text) + '</div><div class="message-time">' + timeHtml + '</div></div>';
             }
             return '';
           }).filter(Boolean).join('');
+          
+          container.innerHTML = workingIndicator + messagesHtml;
         } else {
           var emptyText = state.goalChatMode === 'pm'
             ? 'Start chatting with the PM to discuss plans, adjust tasks, or get clarification.'
             : 'No messages in this session yet.';
-          container.innerHTML = '<div class="empty-state" style="padding:24px;">' + escapeHtml(emptyText) + '</div>';
+          container.innerHTML = workingIndicator + '<div class="empty-state" style="padding:24px;">' + escapeHtml(emptyText) + '</div>';
         }
         // Scroll the parent .goal-chat-body (the actual overflow container)
         var scrollParent = container.parentElement;
@@ -2802,6 +2914,48 @@
       
       // Update team unread badge
       updateTeamUnreadBadge();
+    }
+    
+    /**
+     * Get color for role (for inline styles)
+     */
+    function getRoleColor(role) {
+      var colors = {
+        pm: 'rgba(147, 51, 234, 0.2)',
+        frontend: 'rgba(59, 130, 246, 0.2)',
+        backend: 'rgba(16, 185, 129, 0.2)',
+        designer: 'rgba(236, 72, 153, 0.2)',
+        tester: 'rgba(245, 158, 11, 0.2)',
+        devops: 'rgba(99, 102, 241, 0.2)',
+        qa: 'rgba(34, 197, 94, 0.2)',
+      };
+      return colors[role?.toLowerCase()] || 'rgba(255, 255, 255, 0.06)';
+    }
+    
+    /**
+     * Get list of agents currently working on this goal
+     */
+    function getWorkingAgentsForGoal() {
+      var goal = state.goals.find(function(g) { return g.id === state.currentGoalOpenId; });
+      if (!goal || !goal.tasks) return [];
+      
+      var working = [];
+      goal.tasks.forEach(function(task) {
+        if (task.sessionKey && state.sessionAgentStatus[task.sessionKey] === 'thinking') {
+          var match = task.sessionKey.match(/^agent:([^:]+):/);
+          var agentId = match ? match[1] : null;
+          if (agentId) {
+            var agent = state.agents.find(function(a) { return a.id === agentId; });
+            working.push({
+              agentId: agentId,
+              emoji: agent?.identity?.emoji || '🤖',
+              name: agent?.identity?.name || agent?.name || agentId,
+              taskText: task.text
+            });
+          }
+        }
+      });
+      return working;
     }
 
     function renderGoalComposer() {
@@ -3627,6 +3781,11 @@
           // Track spawned agents for UI update
           if (result.spawnedSessions) {
             state.kickoffAgents = result.spawnedSessions;
+            
+            // Auto-subscribe to first spawned session for Team tab
+            if (result.spawnedSessions.length > 0) {
+              state.goalChatSessionKey = result.spawnedSessions[0].sessionKey;
+            }
           }
           
           // Refresh data
@@ -3634,6 +3793,11 @@
           
           if (state.currentGoalOpenId === goalId) {
             renderGoalView();
+            
+            // Auto-switch to Team tab to show working agents
+            if (result.spawnedSessions && result.spawnedSessions.length > 0) {
+              setGoalChatMode('team');
+            }
           }
         } else {
           throw new Error(result?.error || 'Kickoff failed');
@@ -5271,6 +5435,13 @@ Response format:
         const isDefault = agent.isDefault ? ' (default)' : '';
         const expanded = isAgentExpanded(agent.id);
         const group = sessionsByAgent.get(agent.id) || { sessions: [], subsessions: [] };
+        const roleBadge = renderAgentRoleBadge(agent.id);
+
+        // Check if any sessions are currently "thinking" (working)
+        const isWorking = [...group.sessions, ...group.subsessions].some(s => 
+          state.sessionAgentStatus[s.key] === 'thinking'
+        );
+        const statusClass = isWorking ? 'working' : (group.sessions.length > 0 ? 'active' : '');
 
         const sessionsHtml = group.sessions.length
           ? group.sessions.map(s => renderSessionItem(s, true)).join('')
@@ -5286,6 +5457,8 @@ Response format:
               <span class="group-expand-icon">${expanded ? '▼' : '▶'}</span>
               <span class="group-icon">${escapeHtml(emoji)}</span>
               <span class="group-name">${escapeHtml(name)}${isDefault}</span>
+              ${roleBadge}
+              <span class="agent-panel-status ${statusClass}" title="${isWorking ? 'Working' : 'Idle'}"></span>
               <span class="group-count">${group.sessions.length + group.subsessions.length}</span>
               <button class="session-action-btn" onclick="event.stopPropagation(); startNewSession('${escapeHtml(agent.id)}')" title="New session">＋</button>
               <button class="session-action-btn" onclick="event.stopPropagation(); showAgentDetails('${escapeHtml(agent.id)}')" title="Details">ℹ</button>
@@ -5377,6 +5550,259 @@ Response format:
       } catch (err) {
         console.error('Failed to start session:', err);
         showToast('Failed to start new session: ' + err.message, 'error');
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ROLE MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════
+    
+    // Role definitions with emojis and colors
+    const ROLE_DEFINITIONS = {
+      pm: { name: 'PM', emoji: '📋', color: 'role-pm' },
+      frontend: { name: 'Frontend', emoji: '🎨', color: 'role-frontend' },
+      backend: { name: 'Backend', emoji: '⚙️', color: 'role-backend' },
+      designer: { name: 'Designer', emoji: '🖌️', color: 'role-designer' },
+      tester: { name: 'Tester', emoji: '🔍', color: 'role-tester' },
+      devops: { name: 'DevOps', emoji: '🚀', color: 'role-devops' },
+      qa: { name: 'QA', emoji: '✅', color: 'role-qa' },
+    };
+    
+    // State for role management
+    state.roleConfig = null;  // Loaded from config.listRoles
+    state.roleDropdownTarget = null;  // { agentId, element }
+    
+    /**
+     * Get role info for display
+     * @param {string} role - Role name
+     * @returns {object} { name, emoji, color }
+     */
+    function getRoleInfo(role) {
+      if (!role) return null;
+      const normalized = role.toLowerCase();
+      if (ROLE_DEFINITIONS[normalized]) {
+        return ROLE_DEFINITIONS[normalized];
+      }
+      // Custom role - generate info
+      return {
+        name: role.charAt(0).toUpperCase() + role.slice(1),
+        emoji: '🏷️',
+        color: ''
+      };
+    }
+    
+    /**
+     * Get the role assigned to an agent (reverse lookup)
+     * @param {string} agentId - Agent ID
+     * @returns {string|null} Role name or null
+     */
+    function getAgentRole(agentId) {
+      if (!state.roleConfig) return null;
+      for (const [role, info] of Object.entries(state.roleConfig)) {
+        if (info.agentId === agentId || info.configured === agentId) {
+          return role;
+        }
+      }
+      // Check defaults
+      for (const [role, info] of Object.entries(state.roleConfig)) {
+        if (info.default === agentId && !info.configured) {
+          return role;
+        }
+      }
+      return null;
+    }
+    
+    /**
+     * Load role configuration from server
+     */
+    async function loadRoleConfig() {
+      try {
+        const result = await rpcCall('config.listRoles', {});
+        if (result && result.roles) {
+          state.roleConfig = result.roles;
+          renderAgents(); // Re-render with roles
+        }
+      } catch (err) {
+        console.error('Failed to load role config:', err);
+      }
+    }
+    
+    /**
+     * Assign a role to an agent
+     * @param {string} agentId - Agent ID
+     * @param {string} role - Role name
+     */
+    async function assignRole(agentId, role) {
+      try {
+        await rpcCall('config.setRole', { role: role, agentId: agentId });
+        showToast(`Assigned ${role} to ${agentId}`, 'success');
+        await loadRoleConfig();
+        hideRoleDropdown();
+      } catch (err) {
+        console.error('Failed to assign role:', err);
+        showToast('Failed to assign role: ' + err.message, 'error');
+      }
+    }
+    
+    /**
+     * Assign custom role from dropdown input
+     */
+    function assignCustomRole() {
+      const input = document.getElementById('roleDropdownCustom');
+      const role = input.value.trim();
+      if (!role || !state.roleDropdownTarget) return;
+      assignRole(state.roleDropdownTarget.agentId, role);
+    }
+    
+    /**
+     * Show role dropdown at element
+     * @param {string} agentId - Agent ID
+     * @param {Event} event - Click event
+     */
+    function showRoleDropdown(agentId, event) {
+      event.stopPropagation();
+      
+      const dropdown = document.getElementById('roleDropdown');
+      const items = document.getElementById('roleDropdownItems');
+      const customInput = document.getElementById('roleDropdownCustom');
+      
+      // Get current role for this agent
+      const currentRole = getAgentRole(agentId);
+      
+      // Build dropdown items
+      items.innerHTML = Object.entries(ROLE_DEFINITIONS).map(([role, info]) => {
+        const isActive = currentRole === role;
+        return `
+          <div class="role-dropdown-item ${isActive ? 'active' : ''}" onclick="assignRole('${escapeHtml(agentId)}', '${escapeHtml(role)}')">
+            <span class="role-emoji">${info.emoji}</span>
+            <span class="role-name">${info.name}</span>
+            ${isActive ? '<span class="role-check">✓</span>' : ''}
+          </div>
+        `;
+      }).join('');
+      
+      // Position dropdown
+      const rect = event.target.getBoundingClientRect();
+      dropdown.style.top = (rect.bottom + 4) + 'px';
+      dropdown.style.left = rect.left + 'px';
+      
+      // Store target
+      state.roleDropdownTarget = { agentId, element: event.target };
+      
+      // Show
+      dropdown.classList.remove('hidden');
+      customInput.value = '';
+      
+      // Close on outside click
+      setTimeout(() => {
+        document.addEventListener('click', closeRoleDropdownOnClick);
+      }, 10);
+    }
+    
+    /**
+     * Hide role dropdown
+     */
+    function hideRoleDropdown() {
+      const dropdown = document.getElementById('roleDropdown');
+      dropdown.classList.add('hidden');
+      state.roleDropdownTarget = null;
+      document.removeEventListener('click', closeRoleDropdownOnClick);
+    }
+    
+    function closeRoleDropdownOnClick(event) {
+      const dropdown = document.getElementById('roleDropdown');
+      if (!dropdown.contains(event.target)) {
+        hideRoleDropdown();
+      }
+    }
+    
+    /**
+     * Render role badge for an agent
+     * @param {string} agentId - Agent ID
+     * @returns {string} HTML
+     */
+    function renderAgentRoleBadge(agentId) {
+      const role = getAgentRole(agentId);
+      const info = getRoleInfo(role);
+      
+      if (!info) {
+        return `<span class="agent-role-badge" onclick="showRoleDropdown('${escapeHtml(agentId)}', event)" title="Assign role">
+          <span class="role-emoji">🏷️</span>
+          <span>Assign</span>
+        </span>`;
+      }
+      
+      return `<span class="agent-role-badge ${info.color}" onclick="showRoleDropdown('${escapeHtml(agentId)}', event)" title="Change role">
+        <span class="role-emoji">${info.emoji}</span>
+        <span>${info.name}</span>
+      </span>`;
+    }
+    
+    /**
+     * Show role configuration modal
+     */
+    async function showRoleConfigModal() {
+      // Load latest config
+      await loadRoleConfig();
+      
+      const tbody = document.getElementById('roleConfigTableBody');
+      const roles = state.roleConfig || {};
+      
+      // Build table rows
+      tbody.innerHTML = Object.entries(ROLE_DEFINITIONS).map(([role, info]) => {
+        const roleData = roles[role] || { agentId: role, configured: null, default: role };
+        const isDefault = !roleData.configured;
+        
+        return `
+          <tr data-role="${escapeHtml(role)}">
+            <td class="role-config-row-emoji">${info.emoji}</td>
+            <td class="role-config-row-name">${info.name}</td>
+            <td>
+              <input type="text" class="role-config-row-input" 
+                     data-role="${escapeHtml(role)}"
+                     value="${escapeHtml(roleData.configured || '')}"
+                     placeholder="${escapeHtml(roleData.default)}">
+            </td>
+            <td class="role-config-row-agent ${isDefault ? 'default' : ''}">${escapeHtml(roleData.agentId)}</td>
+          </tr>
+        `;
+      }).join('');
+      
+      // Show modal
+      document.getElementById('roleConfigModal').classList.remove('hidden');
+      document.getElementById('roleConfigError').style.display = 'none';
+    }
+    
+    /**
+     * Hide role configuration modal
+     */
+    function hideRoleConfigModal() {
+      document.getElementById('roleConfigModal').classList.add('hidden');
+    }
+    
+    /**
+     * Save role configuration from modal
+     */
+    async function saveRoleConfig() {
+      const inputs = document.querySelectorAll('.role-config-row-input');
+      const updates = {};
+      
+      inputs.forEach(input => {
+        const role = input.dataset.role;
+        const value = input.value.trim();
+        updates[role] = value || null;  // null to clear (use default)
+      });
+      
+      try {
+        await rpcCall('config.set', { agentRoles: updates });
+        showToast('Role configuration saved', 'success');
+        await loadRoleConfig();
+        hideRoleConfigModal();
+      } catch (err) {
+        console.error('Failed to save role config:', err);
+        const errorEl = document.getElementById('roleConfigError');
+        errorEl.textContent = 'Failed to save: ' + err.message;
+        errorEl.style.display = 'block';
       }
     }
     
