@@ -1,12 +1,16 @@
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { watch, existsSync } from 'fs';
 import { createGoalsStore } from './lib/goals-store.js';
 import { createGoalHandlers } from './lib/goals-handlers.js';
 import { createCondoHandlers } from './lib/condos-handlers.js';
-import { createPlanHandlers } from './lib/plan-handlers.js';
+import { createPlanHandlers, getPlanLogBuffer } from './lib/plan-handlers.js';
+import { createNotificationHandlers } from './lib/notification-manager.js';
+import { createAutonomyHandlers } from './lib/autonomy.js';
 import { buildGoalContext, buildCondoContext, buildCondoMenuContext, getProjectSummaryForGoal } from './lib/context-builder.js';
 import { createGoalUpdateExecutor } from './lib/goal-update-tool.js';
-import { createTaskSpawnHandler } from './lib/task-spawn.js';
+import { createTaskSpawnHandler, buildPlanFilePath } from './lib/task-spawn.js';
+import { matchLogToStep } from './lib/plan-manager.js';
 import {
   createCondoBindExecutor,
   createCondoCreateGoalExecutor,
@@ -59,13 +63,149 @@ export default function register(api) {
     api.registerGatewayMethod(method, handler);
   }
 
-  // Plan management handlers
-  const planHandlers = createPlanHandlers(store);
+  // ── WebSocket broadcasting for real-time plan updates ──
+  const broadcastPlanUpdate = (payload) => {
+    if (api.broadcast) {
+      api.broadcast({
+        type: 'event',
+        event: payload.event || 'plan.update',
+        payload,
+      });
+    }
+  };
+
+  // ── Send message to a specific session (for approval/rejection notifications) ──
+  const sendToSession = (sessionKey, message) => {
+    if (api.sendToSession) {
+      api.sendToSession(sessionKey, message);
+    } else {
+      api.logger.warn(`clawcondos-goals: sendToSession not available, cannot notify ${sessionKey}`);
+    }
+  };
+
+  // Plan management handlers (with broadcast and session notification)
+  const planHandlers = createPlanHandlers(store, {
+    broadcastPlanUpdate,
+    sendToSession,
+  });
   for (const [method, handler] of Object.entries(planHandlers)) {
     api.registerGatewayMethod(method, handler);
   }
 
+  // Notification handlers
+  const notificationHandlers = createNotificationHandlers(store);
+  for (const [method, handler] of Object.entries(notificationHandlers)) {
+    api.registerGatewayMethod(method, handler);
+  }
+
+  // Autonomy handlers
+  const autonomyHandlers = createAutonomyHandlers(store);
+  for (const [method, handler] of Object.entries(autonomyHandlers)) {
+    api.registerGatewayMethod(method, handler);
+  }
+
   api.registerGatewayMethod('goals.spawnTaskSession', createTaskSpawnHandler(store));
+
+  // ── Plan file watching ──
+  const planLogBuffer = getPlanLogBuffer();
+  const planFileWatchers = new Map(); // sessionKey -> { watcher, filePath, debounceTimer }
+  const PLAN_WATCH_DEBOUNCE_MS = 500;
+
+  /**
+   * Start watching a plan file for a session
+   */
+  function watchPlanFile(sessionKey, filePath) {
+    if (planFileWatchers.has(sessionKey)) {
+      return; // Already watching
+    }
+
+    if (!existsSync(filePath)) {
+      // File doesn't exist yet, skip watching
+      return;
+    }
+
+    try {
+      const watcher = watch(filePath, { persistent: false }, (eventType) => {
+        const existing = planFileWatchers.get(sessionKey);
+        if (!existing) return;
+
+        // Debounce rapid changes
+        if (existing.debounceTimer) {
+          clearTimeout(existing.debounceTimer);
+        }
+
+        existing.debounceTimer = setTimeout(() => {
+          if (!existsSync(filePath)) return;
+
+          // Emit plan.update event
+          broadcastPlanUpdate({
+            event: 'plan.file_changed',
+            sessionKey,
+            filePath,
+            timestamp: Date.now(),
+          });
+
+          // Log to plan buffer
+          planLogBuffer.append(sessionKey, {
+            type: 'file_change',
+            message: 'Plan file updated',
+            filePath,
+          });
+
+          api.logger.debug(`clawcondos-goals: plan file changed for ${sessionKey}: ${filePath}`);
+        }, PLAN_WATCH_DEBOUNCE_MS);
+      });
+
+      planFileWatchers.set(sessionKey, { watcher, filePath, debounceTimer: null });
+      api.logger.info(`clawcondos-goals: watching plan file for ${sessionKey}: ${filePath}`);
+    } catch (err) {
+      api.logger.error(`clawcondos-goals: failed to watch plan file ${filePath}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Stop watching a plan file for a session
+   */
+  function unwatchPlanFile(sessionKey) {
+    const existing = planFileWatchers.get(sessionKey);
+    if (existing) {
+      if (existing.debounceTimer) {
+        clearTimeout(existing.debounceTimer);
+      }
+      try {
+        existing.watcher.close();
+      } catch {}
+      planFileWatchers.delete(sessionKey);
+      api.logger.info(`clawcondos-goals: stopped watching plan file for ${sessionKey}`);
+    }
+  }
+
+  /**
+   * Initialize plan file watchers for all active task sessions
+   */
+  function initPlanFileWatchers() {
+    const data = store.load();
+    for (const goal of data.goals) {
+      if (goal.completed) continue;
+      for (const task of goal.tasks || []) {
+        if (!task.sessionKey || task.status === 'done') continue;
+
+        // Get expected plan file path
+        const agentMatch = task.sessionKey.match(/^agent:([^:]+):/);
+        const agentId = agentMatch ? agentMatch[1] : 'main';
+        const planFilePath = task.plan?.expectedFilePath || buildPlanFilePath(agentId, goal.id, task.id);
+
+        watchPlanFile(task.sessionKey, planFilePath);
+      }
+    }
+  }
+
+  // Initialize watchers on plugin load
+  try {
+    initPlanFileWatchers();
+  } catch (err) {
+    api.logger.error(`clawcondos-goals: failed to initialize plan file watchers: ${err.message}`);
+  }
 
   // Classification RPC methods
   api.registerGatewayMethod('classification.stats', ({ respond }) => {
@@ -184,7 +324,7 @@ export default function register(api) {
     }
   });
 
-  // Hook: track session activity on goals and condos
+  // Hook: track session activity on goals and condos + cleanup plan file watchers
   api.registerHook('agent_end', async (event) => {
     const sessionKey = event.context?.sessionKey;
     if (!sessionKey || !event.success) return;
@@ -212,9 +352,112 @@ export default function register(api) {
       goal.updatedAtMs = Date.now();
       store.save(data);
       api.logger.info(`clawcondos-goals: agent_end for session ${sessionKey} (goal: ${goal.title})`);
+
+      // Check if task is complete and cleanup watcher
+      const task = (goal.tasks || []).find(t => t.sessionKey === sessionKey);
+      if (task && task.status === 'done') {
+        unwatchPlanFile(sessionKey);
+        // Clear plan log buffer for completed sessions
+        planLogBuffer.clear(sessionKey);
+      }
     } catch (err) {
       api.logger.error(`clawcondos-goals: agent_end error for ${sessionKey}: ${err.message}`);
     }
+  });
+
+  // Hook: intercept agent stream for plan.log events
+  if (api.registerHook) {
+    api.registerHook('agent_stream', async (event) => {
+      const sessionKey = event.context?.sessionKey;
+      if (!sessionKey) return;
+
+      // Check if session is assigned to a goal with a task
+      const data = store.load();
+      const entry = data.sessionIndex[sessionKey];
+      if (!entry) return;
+
+      const goal = data.goals.find(g => g.id === entry.goalId);
+      if (!goal) return;
+
+      const task = (goal.tasks || []).find(t => t.sessionKey === sessionKey);
+      if (!task || !task.plan) return;
+
+      // Extract log-worthy events from stream
+      const chunk = event.chunk;
+      if (!chunk) return;
+
+      // Handle tool calls
+      if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
+        const logEntry = {
+          type: chunk.type,
+          message: chunk.type === 'tool_call'
+            ? `Tool call: ${chunk.name || 'unknown'}`
+            : `Tool result: ${chunk.success ? 'success' : 'failure'}`,
+          toolName: chunk.name,
+          metadata: chunk.type === 'tool_result' ? { success: chunk.success } : null,
+        };
+
+        // Try to match to a plan step
+        if (task.plan.steps && task.plan.steps.length > 0) {
+          const match = matchLogToStep(logEntry.message, task.plan.steps);
+          if (match.matched) {
+            logEntry.stepIndex = match.stepIndex;
+            logEntry.matchConfidence = match.confidence;
+          }
+        }
+
+        planLogBuffer.append(sessionKey, logEntry);
+
+        // Broadcast plan.log event
+        broadcastPlanUpdate({
+          event: 'plan.log',
+          sessionKey,
+          goalId: goal.id,
+          taskId: task.id,
+          entry: {
+            ...logEntry,
+            timestamp: Date.now(),
+          },
+        });
+      }
+
+      // Handle text output (selective logging)
+      if (chunk.type === 'text' && chunk.text) {
+        const text = chunk.text.trim();
+        // Only log significant text (headings, status updates, etc.)
+        if (text.startsWith('#') || text.startsWith('✓') || text.startsWith('✗') ||
+            text.includes('Starting') || text.includes('Completed') ||
+            text.includes('Error:') || text.includes('Step ')) {
+          const logEntry = {
+            type: 'text',
+            message: text.slice(0, 200), // Truncate long text
+          };
+
+          // Try to match to a plan step
+          if (task.plan.steps && task.plan.steps.length > 0) {
+            const match = matchLogToStep(text, task.plan.steps);
+            if (match.matched) {
+              logEntry.stepIndex = match.stepIndex;
+              logEntry.matchConfidence = match.confidence;
+            }
+          }
+
+          planLogBuffer.append(sessionKey, logEntry);
+        }
+      }
+    });
+  }
+
+  // Hook: start watching plan file when task is spawned
+  api.registerHook('after_rpc', async (event) => {
+    if (event.method !== 'goals.spawnTaskSession') return;
+    if (!event.success || !event.result) return;
+
+    const { sessionKey, goalId, taskId, planFilePath } = event.result;
+    if (!sessionKey || !planFilePath) return;
+
+    // Start watching the expected plan file path
+    watchPlanFile(sessionKey, planFilePath);
   });
 
   // Tool: goal_update for agents to report task status
@@ -402,6 +645,6 @@ export default function register(api) {
     { names: ['condo_spawn_task'] }
   );
 
-  const totalMethods = Object.keys(handlers).length + Object.keys(condoHandlers).length + Object.keys(planHandlers).length + 1 + 3; // +1 spawnTaskSession, +3 classification RPC methods
-  api.logger.info(`clawcondos-goals: registered ${totalMethods} gateway methods, 5 tools, data at ${dataDir}`);
+  const totalMethods = Object.keys(handlers).length + Object.keys(condoHandlers).length + Object.keys(planHandlers).length + Object.keys(notificationHandlers).length + Object.keys(autonomyHandlers).length + 1 + 3; // +1 spawnTaskSession, +3 classification RPC methods
+  api.logger.info(`clawcondos-goals: registered ${totalMethods} gateway methods, 5 tools, ${planFileWatchers.size} plan file watchers, data at ${dataDir}`);
 }

@@ -43,22 +43,33 @@ describe('Plugin index.js', () => {
   });
 
   describe('registration', () => {
-    it('registers all 26 gateway methods', () => {
+    it('registers all 42 gateway methods', () => {
       const expected = [
+        // Goals handlers
         'goals.list', 'goals.create', 'goals.get', 'goals.update', 'goals.delete',
         'goals.addSession', 'goals.removeSession', 'goals.sessionLookup',
         'goals.setSessionCondo', 'goals.getSessionCondo', 'goals.listSessionCondos',
         'goals.removeSessionCondo',
         'goals.addTask', 'goals.updateTask', 'goals.deleteTask',
         'goals.addFiles', 'goals.removeFile',
+        // Condo handlers
         'condos.create', 'condos.list', 'condos.get', 'condos.update', 'condos.delete',
+        // Task spawn
         'goals.spawnTaskSession',
+        // Plan handlers
+        'plans.get', 'plans.syncFromFile', 'plans.updateStatus', 'plans.updateStep',
+        'plans.approve', 'plans.reject', 'plans.getLogs', 'plans.appendLog',
+        // Notification handlers
+        'notifications.list', 'notifications.markRead', 'notifications.dismiss', 'notifications.unreadCount',
+        // Autonomy handlers
+        'autonomy.getTaskInfo', 'autonomy.setTask', 'autonomy.setCondo', 'autonomy.modes',
+        // Classification
         'classification.stats', 'classification.learningReport', 'classification.applyLearning',
       ];
       for (const name of expected) {
         expect(api._methods).toHaveProperty(name);
       }
-      expect(Object.keys(api._methods)).toHaveLength(26);
+      expect(Object.keys(api._methods)).toHaveLength(42);
     });
 
     it('registers before_agent_start and agent_end hooks', () => {
