@@ -121,6 +121,29 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
+       PM CHAT MODAL (Chat with PM agent for plan discussions)
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="pmChatModal">
+    <div class="modal pm-chat-modal" style="max-width: 600px; max-height: 80vh; display: flex; flex-direction: column;">
+      <div class="pm-chat-header">
+        <h2 class="modal-title">💬 Chat with PM</h2>
+        <div class="pm-chat-goal-label" id="pmChatGoalLabel">Goal: —</div>
+        <button class="ghost-btn" onclick="closePMChatModal()" style="position: absolute; right: 16px; top: 16px; background: none; border: none; color: var(--text-dim); font-size: 1.2rem; cursor: pointer;">✕</button>
+      </div>
+      <div class="pm-chat-messages" id="pmChatMessages">
+        <div class="pm-chat-empty">Start chatting with the PM to discuss plans, request changes, or get clarification.</div>
+      </div>
+      <div class="pm-chat-composer">
+        <textarea class="chat-input pm-chat-input" id="pmChatInput" placeholder="Type a message to the PM agent..." rows="2" onkeypress="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendPMMessage(); }"></textarea>
+        <button class="send-btn pm-chat-send" onclick="sendPMMessage()">
+          <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
+      <div class="pm-chat-hint">Press Enter to send, Shift+Enter for new line</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
        SPAWN TASK SESSION MODAL
        ═══════════════════════════════════════════════════════════════ -->
   <div class="modal-overlay hidden" id="spawnTaskModal">
@@ -430,6 +453,7 @@
                 </div>
               </div>
               <div class="goal-right-actions">
+                <button class="goal-pm-chat-btn" id="goalPMChatBtn" onclick="openPMChatModal(state.currentGoalOpenId)" title="Chat with PM agent">💬 PM</button>
                 <button class="ghost-btn" id="goalMarkDoneBtn" onclick="toggleGoalDone()">Mark done</button>
                 <button class="ghost-btn" onclick="showAttachSessionModal(null)">⛓</button>
                 <button class="ghost-btn danger" onclick="promptDeleteGoal()" title="Delete goal">Delete</button>
@@ -3291,6 +3315,344 @@
       }
     }
     
+    // ═══════════════════════════════════════════════════════════════
+    // AGENT LABELS — Emoji + name mapping for task agents
+    // ═══════════════════════════════════════════════════════════════
+    
+    const AGENT_LABEL_MAP = {
+      'felix': { emoji: '🎨', name: 'Félix' },
+      'félix': { emoji: '🎨', name: 'Félix' },
+      'dana': { emoji: '✨', name: 'Dana' },
+      'blake': { emoji: '⚙️', name: 'Blake' },
+      'quinn': { emoji: '🔍', name: 'Quinn' },
+      'main': { emoji: '🤖', name: 'Main' },
+      'claudia': { emoji: '🤖', name: 'Claudia' },
+      'pm': { emoji: '📋', name: 'PM' },
+    };
+    
+    /**
+     * Get agent label info (emoji + name) from agentId or agentLabel
+     * @param {Object} task - Task object with optional assignedAgent or agentLabel
+     * @returns {{ emoji: string, name: string } | null}
+     */
+    function getAgentLabelInfo(task) {
+      if (!task) return null;
+      
+      const agentId = task.assignedAgent || task.agentLabel || task.agentId;
+      if (!agentId) return null;
+      
+      const normalized = String(agentId).toLowerCase().trim();
+      
+      // Check direct mapping
+      if (AGENT_LABEL_MAP[normalized]) {
+        return AGENT_LABEL_MAP[normalized];
+      }
+      
+      // Check if any key is contained in the agentId (e.g., "agent:felix:main" contains "felix")
+      for (const [key, value] of Object.entries(AGENT_LABEL_MAP)) {
+        if (normalized.includes(key)) {
+          return value;
+        }
+      }
+      
+      // Extract agent name from sessionKey format "agent:name:..."
+      const match = normalized.match(/^agent:([^:]+)/);
+      if (match) {
+        const name = match[1];
+        if (AGENT_LABEL_MAP[name]) {
+          return AGENT_LABEL_MAP[name];
+        }
+        // Return unknown agent with generic icon
+        return { emoji: '🤖', name: name.charAt(0).toUpperCase() + name.slice(1) };
+      }
+      
+      // Default: capitalize the agentId
+      return { emoji: '🤖', name: agentId.charAt(0).toUpperCase() + agentId.slice(1) };
+    }
+    
+    /**
+     * Render agent label HTML for a task
+     * @param {Object} task - Task object
+     * @returns {string} HTML string
+     */
+    function renderTaskAgentLabel(task) {
+      const info = getAgentLabelInfo(task);
+      if (!info) return '';
+      
+      return '<span class="task-agent-label">' +
+        '<span class="task-agent-label-emoji">' + info.emoji + '</span>' +
+        '<span>' + escapeHtml(info.name) + '</span>' +
+        '</span>';
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // PM CHAT — Chat with PM agent for plan discussions
+    // ═══════════════════════════════════════════════════════════════
+    
+    state.pmChatGoalId = null;
+    state.pmChatMessages = [];
+    state.pmChatPendingResponse = false;
+    
+    /**
+     * Open PM chat modal for a goal
+     * @param {string} goalId - Goal ID to chat about
+     */
+    function openPMChatModal(goalId) {
+      const goal = state.goals.find(g => g.id === goalId);
+      if (!goal) return;
+      
+      state.pmChatGoalId = goalId;
+      state.pmChatMessages = [];
+      
+      document.getElementById('pmChatGoalLabel').textContent = 'Goal: ' + (goal.title || 'Untitled');
+      document.getElementById('pmChatMessages').innerHTML = 
+        '<div class="pm-chat-empty">Start chatting with the PM to discuss plans, request changes, or get clarification.</div>';
+      document.getElementById('pmChatInput').value = '';
+      document.getElementById('pmChatModal').classList.remove('hidden');
+      
+      // Focus input
+      setTimeout(() => document.getElementById('pmChatInput').focus(), 100);
+    }
+    
+    /**
+     * Close PM chat modal
+     */
+    function closePMChatModal() {
+      document.getElementById('pmChatModal').classList.add('hidden');
+      state.pmChatGoalId = null;
+      state.pmChatPendingResponse = false;
+    }
+    
+    /**
+     * Send message to PM agent
+     */
+    async function sendPMMessage() {
+      const input = document.getElementById('pmChatInput');
+      const message = input.value.trim();
+      if (!message || !state.pmChatGoalId || state.pmChatPendingResponse) return;
+      
+      input.value = '';
+      state.pmChatPendingResponse = true;
+      
+      // Add user message to UI
+      addPMChatMessage('user', message);
+      
+      // Show typing indicator
+      showPMTypingIndicator();
+      
+      try {
+        // Call pm.chat RPC
+        const result = await rpcCall('pm.chat', {
+          goalId: state.pmChatGoalId,
+          message: message,
+        }, 60000); // 60s timeout for PM responses
+        
+        hidePMTypingIndicator();
+        
+        if (result && result.response) {
+          addPMChatMessage('assistant', result.response);
+          
+          // If the PM made changes to the plan, refresh goal data
+          if (result.planUpdated) {
+            await loadGoals();
+            if (state.currentGoalOpenId === state.pmChatGoalId) {
+              renderGoalPane();
+            }
+          }
+        }
+      } catch (err) {
+        console.error('PM chat error:', err);
+        hidePMTypingIndicator();
+        addPMChatMessage('assistant', '❌ Failed to reach PM agent: ' + (err.message || 'Unknown error'));
+      } finally {
+        state.pmChatPendingResponse = false;
+      }
+    }
+    
+    /**
+     * Add a message to PM chat UI
+     */
+    function addPMChatMessage(role, content) {
+      const container = document.getElementById('pmChatMessages');
+      
+      // Remove empty state
+      const empty = container.querySelector('.pm-chat-empty');
+      if (empty) empty.remove();
+      
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'pm-chat-message ' + role;
+      
+      const icon = role === 'user' ? '👤' : '📋';
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      
+      msgDiv.innerHTML = 
+        '<span class="pm-chat-message-icon">' + icon + '</span>' +
+        '<div class="pm-chat-message-content">' +
+          formatMessage(content) +
+          '<div class="pm-chat-message-time">' + time + '</div>' +
+        '</div>';
+      
+      container.appendChild(msgDiv);
+      container.scrollTop = container.scrollHeight;
+      
+      state.pmChatMessages.push({ role, content, timestamp: Date.now() });
+    }
+    
+    /**
+     * Show PM typing indicator
+     */
+    function showPMTypingIndicator() {
+      const container = document.getElementById('pmChatMessages');
+      
+      const existing = container.querySelector('.pm-chat-typing');
+      if (existing) return;
+      
+      const typing = document.createElement('div');
+      typing.className = 'pm-chat-typing pm-chat-message assistant';
+      typing.innerHTML = 
+        '<span class="pm-chat-message-icon">📋</span>' +
+        '<div class="pm-chat-message-content">' +
+          '<div class="pm-chat-typing-dots">' +
+            '<span class="pm-chat-typing-dot"></span>' +
+            '<span class="pm-chat-typing-dot"></span>' +
+            '<span class="pm-chat-typing-dot"></span>' +
+          '</div>' +
+        '</div>';
+      
+      container.appendChild(typing);
+      container.scrollTop = container.scrollHeight;
+    }
+    
+    /**
+     * Hide PM typing indicator
+     */
+    function hidePMTypingIndicator() {
+      const typing = document.querySelector('.pm-chat-typing');
+      if (typing) typing.remove();
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // KICKOFF FLOW — Approve & spawn agents for a goal
+    // ═══════════════════════════════════════════════════════════════
+    
+    state.kickoffInProgress = null; // goalId being kicked off
+    state.kickoffAgents = []; // agents being spawned
+    
+    /**
+     * Approve and kickoff the goal's plan
+     * @param {string} goalId - Goal ID to kickoff
+     */
+    async function approveAndKickoff(goalId) {
+      const goal = state.goals.find(g => g.id === goalId);
+      if (!goal) return;
+      
+      state.kickoffInProgress = goalId;
+      state.kickoffAgents = [];
+      renderGoalPane(); // Show progress UI
+      
+      try {
+        // Call goals.kickoff RPC
+        const result = await rpcCall('goals.kickoff', {
+          goalId: goalId,
+        }, 120000); // 2 minute timeout for spawning
+        
+        if (result && result.success) {
+          showToast('🚀 Goal kicked off! Agents are starting work.', 'success');
+          
+          // Track spawned agents for UI update
+          if (result.spawnedSessions) {
+            state.kickoffAgents = result.spawnedSessions;
+          }
+          
+          // Refresh data
+          await Promise.all([loadGoals(), loadSessions()]);
+          
+          if (state.currentGoalOpenId === goalId) {
+            renderGoalView();
+          }
+        } else {
+          throw new Error(result?.error || 'Kickoff failed');
+        }
+      } catch (err) {
+        console.error('Kickoff error:', err);
+        showToast('❌ Failed to kickoff: ' + (err.message || 'Unknown error'), 'error');
+      } finally {
+        state.kickoffInProgress = null;
+        state.kickoffAgents = [];
+        renderGoalPane();
+      }
+    }
+    
+    /**
+     * Approve a goal-level plan (without kickoff)
+     * @param {string} goalId - Goal ID
+     */
+    async function approveGoalPlan(goalId) {
+      try {
+        await rpcCall('goals.approvePlan', { goalId });
+        showToast('✅ Plan approved', 'success');
+        await loadGoals();
+        if (state.currentGoalOpenId === goalId) {
+          renderGoalPane();
+        }
+      } catch (err) {
+        console.error('Approve plan error:', err);
+        showToast('❌ Failed to approve plan: ' + (err.message || err), 'error');
+      }
+    }
+    
+    /**
+     * Reject a goal-level plan with feedback
+     * @param {string} goalId - Goal ID
+     */
+    async function rejectGoalPlan(goalId) {
+      const feedback = prompt('Please provide feedback for rejecting this plan:');
+      if (!feedback || !feedback.trim()) {
+        showToast('Rejection cancelled - feedback is required', 'warning');
+        return;
+      }
+      
+      try {
+        await rpcCall('goals.rejectPlan', { goalId, feedback: feedback.trim() });
+        showToast('❌ Plan rejected with feedback', 'info');
+        await loadGoals();
+        if (state.currentGoalOpenId === goalId) {
+          renderGoalPane();
+        }
+      } catch (err) {
+        console.error('Reject plan error:', err);
+        showToast('❌ Failed to reject plan: ' + (err.message || err), 'error');
+      }
+    }
+    
+    /**
+     * Render kickoff progress indicator
+     * @param {string} goalId - Goal ID
+     * @returns {string} HTML string
+     */
+    function renderKickoffProgress(goalId) {
+      if (state.kickoffInProgress !== goalId) return '';
+      
+      const agents = state.kickoffAgents || [];
+      const agentHtml = agents.length > 0 
+        ? agents.map(a => {
+            const info = getAgentLabelInfo({ assignedAgent: a.agentId });
+            const status = a.spawned ? 'spawned' : 'spawning';
+            return '<span class="kickoff-agent-item ' + status + '">' +
+              (info ? info.emoji + ' ' : '') + escapeHtml(a.agentId || 'agent') +
+              '</span>';
+          }).join('')
+        : '<span class="kickoff-agent-item spawning">Starting agents...</span>';
+      
+      return '<div class="kickoff-progress">' +
+        '<div class="kickoff-progress-header">' +
+          '<div class="kickoff-progress-spinner"></div>' +
+          '<span>Kicking off goal...</span>' +
+        '</div>' +
+        '<div class="kickoff-agent-list">' + agentHtml + '</div>' +
+        '</div>';
+    }
+    
     /**
      * Calculate aggregate plan progress for a goal
      */
@@ -3316,53 +3678,173 @@
     
     /**
      * Render the Plans tab content (aggregate view)
+     * Shows goal-level plan with markdown, task breakdown table, and approve/kickoff buttons
      */
     function renderPlansTabContent(goal) {
       const tasks = Array.isArray(goal.tasks) ? goal.tasks : [];
       const tasksWithPlans = tasks.filter(t => t.plan && t.plan.status && t.plan.status !== 'none');
       
-      if (tasksWithPlans.length === 0) {
-        return '<div class="empty-state">No plans yet. Plans will appear here when tasks have execution plans.</div>';
+      let html = '';
+      
+      // ════════════════════════════════════════════════════════════════
+      // GOAL-LEVEL PLAN SECTION
+      // ════════════════════════════════════════════════════════════════
+      
+      const goalPlan = goal.plan || {};
+      const goalPlanStatus = goalPlan.status || 'none';
+      const hasGoalPlan = goalPlanStatus !== 'none' && goalPlan.content;
+      
+      if (hasGoalPlan) {
+        const statusLabels = {
+          'draft': { label: 'Draft', emoji: '📋' },
+          'awaiting_approval': { label: 'Awaiting Approval', emoji: '⏳' },
+          'approved': { label: 'Approved', emoji: '✅' },
+          'rejected': { label: 'Rejected', emoji: '❌' },
+          'executing': { label: 'Executing', emoji: '⚡' },
+          'completed': { label: 'Completed', emoji: '🎉' },
+        };
+        const statusInfo = statusLabels[goalPlanStatus] || { label: goalPlanStatus, emoji: '📋' };
+        
+        html += '<div class="goal-plan-section">';
+        html += '<div class="goal-plan-header">';
+        html += '<div class="goal-plan-title">' + statusInfo.emoji + ' Goal Plan</div>';
+        html += '<div class="goal-plan-status ' + escapeHtml(goalPlanStatus) + '">' + escapeHtml(statusInfo.label) + '</div>';
+        html += '</div>';
+        
+        // Render plan content as markdown
+        html += '<div class="goal-plan-content">' + formatMessage(goalPlan.content || '') + '</div>';
+        
+        // ════════════════════════════════════════════════════════════════
+        // TASK BREAKDOWN TABLE with agent labels
+        // ════════════════════════════════════════════════════════════════
+        
+        if (tasks.length > 0) {
+          html += '<div class="goal-plan-tasks">';
+          html += '<div class="goal-plan-tasks-header">Task Breakdown</div>';
+          
+          tasks.forEach(function(t) {
+            const taskStatus = t.status || (t.done ? 'done' : 'pending');
+            const statusIndicator = taskStatus === 'done' ? '✓' : (taskStatus === 'in-progress' ? '●' : '○');
+            const agentInfo = getAgentLabelInfo(t);
+            
+            html += '<div class="goal-plan-task-row">';
+            html += '<div class="goal-plan-task-status ' + escapeHtml(taskStatus) + '">' + statusIndicator + '</div>';
+            html += '<div class="goal-plan-task-name">' + escapeHtml(t.text || 'Untitled task') + '</div>';
+            
+            if (agentInfo) {
+              html += '<div class="goal-plan-task-agent">';
+              html += '<span class="goal-plan-task-agent-emoji">' + agentInfo.emoji + '</span>';
+              html += '<span>' + escapeHtml(agentInfo.name) + '</span>';
+              html += '</div>';
+            }
+            
+            html += '</div>';
+          });
+          
+          html += '</div>';
+        }
+        
+        // ════════════════════════════════════════════════════════════════
+        // ACTION BUTTONS — Approve / Reject / Kickoff / Chat with PM
+        // ════════════════════════════════════════════════════════════════
+        
+        html += '<div class="goal-plan-actions">';
+        
+        if (goalPlanStatus === 'awaiting_approval') {
+          html += '<button class="goal-plan-btn goal-plan-btn-kickoff" onclick="approveAndKickoff(\'' + escapeHtml(goal.id) + '\')">';
+          html += '🚀 Approve & Kickoff</button>';
+          
+          html += '<button class="goal-plan-btn goal-plan-btn-approve" onclick="approveGoalPlan(\'' + escapeHtml(goal.id) + '\')">';
+          html += '✓ Approve Only</button>';
+          
+          html += '<button class="goal-plan-btn goal-plan-btn-reject" onclick="rejectGoalPlan(\'' + escapeHtml(goal.id) + '\')">';
+          html += '✕ Reject</button>';
+        } else if (goalPlanStatus === 'approved') {
+          html += '<button class="goal-plan-btn goal-plan-btn-kickoff" onclick="approveAndKickoff(\'' + escapeHtml(goal.id) + '\')">';
+          html += '🚀 Kickoff</button>';
+        }
+        
+        html += '<button class="goal-plan-btn goal-plan-btn-pm" onclick="openPMChatModal(\'' + escapeHtml(goal.id) + '\')">';
+        html += '💬 Chat with PM</button>';
+        
+        html += '</div>';
+        
+        // Kickoff progress indicator
+        html += renderKickoffProgress(goal.id);
+        
+        html += '</div>'; // .goal-plan-section
+      } else {
+        // No goal-level plan yet - show guidance
+        html += '<div class="goal-plan-section">';
+        html += '<div class="goal-plan-header">';
+        html += '<div class="goal-plan-title">📋 Goal Plan</div>';
+        html += '</div>';
+        html += '<div class="empty-state" style="padding: 24px;">';
+        html += '<p>No goal-level plan yet.</p>';
+        html += '<p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 8px;">Chat with the PM agent to create a plan, or plans will appear here when the PM agent creates one.</p>';
+        html += '</div>';
+        html += '<div class="goal-plan-actions">';
+        html += '<button class="goal-plan-btn goal-plan-btn-pm" onclick="openPMChatModal(\'' + escapeHtml(goal.id) + '\')">';
+        html += '💬 Chat with PM</button>';
+        html += '</div>';
+        html += '</div>';
       }
       
-      const { totalSteps, doneSteps, percent } = calculateGoalPlanProgress(goal);
+      // ════════════════════════════════════════════════════════════════
+      // TASK-LEVEL PLANS SECTION (existing functionality)
+      // ════════════════════════════════════════════════════════════════
       
-      // Overall progress bar
-      let html = '<div class="plans-overview">' +
-        '<div class="plans-overview-header">' +
-        '<span class="plans-overview-title">Overall Progress</span>' +
-        '<span class="plans-overview-stats">' + doneSteps + ' / ' + totalSteps + ' steps</span>' +
-        '</div>' +
-        '<div class="plan-progress">' +
-        '<div class="plan-progress-bar">' +
-        '<div class="plan-progress-fill" style="width: ' + percent + '%;"></div>' +
-        '</div>' +
-        '<span class="plan-progress-text">' + percent + '% complete</span>' +
-        '</div>' +
-        '</div>';
-      
-      // List of tasks with plans
-      html += '<div class="plans-task-list">';
-      tasksWithPlans.forEach(function(t) {
-        const taskId = t.id;
-        const { emoji, label, cssClass } = getPlanStatusInfo(t.plan);
-        const taskProgress = calculatePlanProgress(t.plan.steps || []);
+      if (tasksWithPlans.length > 0) {
+        const { totalSteps, doneSteps, percent } = calculateGoalPlanProgress(goal);
         
-        html += '<div class="plans-task-item" onclick="jumpToPlanTask(\'' + escapeHtml(goal.id) + '\', \'' + escapeHtml(taskId) + '\')">' +
-          '<div class="plans-task-status ' + escapeHtml(cssClass) + '">' + emoji + '</div>' +
-          '<div class="plans-task-info">' +
-          '<div class="plans-task-name">' + escapeHtml(t.text || 'Untitled task') + '</div>' +
-          '<div class="plans-task-meta">' +
-          '<span class="plans-task-label">' + escapeHtml(label) + '</span>' +
-          '<span class="plans-task-progress">' + taskProgress + '% done</span>' +
+        html += '<div style="margin-top: var(--space-xl);">';
+        html += '<div class="plans-overview">' +
+          '<div class="plans-overview-header">' +
+          '<span class="plans-overview-title">Task Execution Progress</span>' +
+          '<span class="plans-overview-stats">' + doneSteps + ' / ' + totalSteps + ' steps</span>' +
           '</div>' +
+          '<div class="plan-progress">' +
+          '<div class="plan-progress-bar">' +
+          '<div class="plan-progress-fill" style="width: ' + percent + '%;"></div>' +
           '</div>' +
-          '<div class="plans-task-arrow">→</div>' +
+          '<span class="plan-progress-text">' + percent + '% complete</span>' +
+          '</div>' +
           '</div>';
-      });
-      html += '</div>';
+        
+        // List of tasks with plans
+        html += '<div class="plans-task-list">';
+        tasksWithPlans.forEach(function(t) {
+          const taskId = t.id;
+          const { emoji, label, cssClass } = getPlanStatusInfo(t.plan);
+          const taskProgress = calculatePlanProgress(t.plan.steps || []);
+          const agentInfo = getAgentLabelInfo(t);
+          
+          html += '<div class="plans-task-item" onclick="jumpToPlanTask(\'' + escapeHtml(goal.id) + '\', \'' + escapeHtml(taskId) + '\')">' +
+            '<div class="plans-task-status ' + escapeHtml(cssClass) + '">' + emoji + '</div>' +
+            '<div class="plans-task-info">' +
+            '<div class="plans-task-name">' + escapeHtml(t.text || 'Untitled task');
+          
+          if (agentInfo) {
+            html += ' <span class="task-agent-label">' +
+              '<span class="task-agent-label-emoji">' + agentInfo.emoji + '</span>' +
+              '<span>' + escapeHtml(agentInfo.name) + '</span>' +
+              '</span>';
+          }
+          
+          html += '</div>' +
+            '<div class="plans-task-meta">' +
+            '<span class="plans-task-label">' + escapeHtml(label) + '</span>' +
+            '<span class="plans-task-progress">' + taskProgress + '% done</span>' +
+            '</div>' +
+            '</div>' +
+            '<div class="plans-task-arrow">→</div>' +
+            '</div>';
+        });
+        html += '</div>';
+        html += '</div>';
+      }
       
-      return html;
+      return html || '<div class="empty-state">No plans yet. Chat with the PM agent to create a plan.</div>';
     }
     
     /**
@@ -3429,10 +3911,13 @@
               ? '<button class="goal-task-spawn" onclick="event.stopPropagation(); openSpawnTaskModal(\'' + escapeHtml(goal.id) + '\',\'' + id + '\')" title="Spawn agent session">\u25b6</button>'
               : '';
             var planBadge = renderPlanBadge(t.plan, taskId);
+            var agentLabel = renderTaskAgentLabel(t);
             var tooltipParts = [taskStatus];
             if (t.sessionKey) tooltipParts.push('session: ' + t.sessionKey);
             if (t.summary) tooltipParts.push(t.summary);
             if (hasPlan) tooltipParts.push('plan: ' + t.plan.status);
+            var agentInfo = getAgentLabelInfo(t);
+            if (agentInfo) tooltipParts.push('→ ' + agentInfo.name);
             var tooltip = escapeHtml(tooltipParts.join(' \u00b7 '));
             
             // Task row
@@ -3442,6 +3927,7 @@
               ' oncontextmenu="showTaskStatusMenu(event,\'' + id + '\')"' +
               ' title="' + tooltip + '"></div>' +
               '<span class="goal-task-text">' + escapeHtml(t.text || '') + '</span>' +
+              agentLabel +
               planBadge +
               spawnBtn +
               '<button class="goal-task-del" onclick="deleteGoalTask(\'' + id + '\')" title="Delete">\u00d7</button>' +
