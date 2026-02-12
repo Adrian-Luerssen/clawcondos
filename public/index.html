@@ -5695,11 +5695,6 @@ Response format:
       // Show
       dropdown.classList.remove('hidden');
       customInput.value = '';
-      
-      // Close on outside click
-      setTimeout(() => {
-        document.addEventListener('click', closeRoleDropdownOnClick);
-      }, 10);
     }
     
     /**
@@ -5707,17 +5702,26 @@ Response format:
      */
     function hideRoleDropdown() {
       const dropdown = document.getElementById('roleDropdown');
-      dropdown.classList.add('hidden');
+      if (dropdown) {
+        dropdown.classList.add('hidden');
+      }
       state.roleDropdownTarget = null;
-      document.removeEventListener('click', closeRoleDropdownOnClick);
     }
     
-    function closeRoleDropdownOnClick(event) {
+    // Global click handler to close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
       const dropdown = document.getElementById('roleDropdown');
-      if (!dropdown.contains(event.target)) {
-        hideRoleDropdown();
-      }
-    }
+      if (!dropdown || dropdown.classList.contains('hidden')) return;
+      
+      // Check if click is inside dropdown
+      if (dropdown.contains(event.target)) return;
+      
+      // Check if click is on a role badge (which opens the dropdown)
+      if (event.target.closest('.agent-role-badge')) return;
+      
+      // Close dropdown
+      hideRoleDropdown();
+    });
     
     /**
      * Render role badge for an agent
