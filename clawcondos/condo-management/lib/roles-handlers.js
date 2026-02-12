@@ -3,7 +3,21 @@
  * Agent role assignment and listing with labels
  */
 
+import { readFileSync, existsSync } from 'fs';
+import { join, basename } from 'path';
 import { getDefaultRoles, getAgentForRole } from './agent-roles.js';
+
+/**
+ * Keywords for auto-detecting agent roles
+ */
+const ROLE_KEYWORDS = {
+  frontend: ['frontend', 'ui', 'react', 'vue', 'angular', 'flutter', 'css', 'html', 'web', 'mobile'],
+  backend: ['backend', 'api', 'database', 'server', 'node', 'python', 'java', 'go', 'rust', 'sql'],
+  designer: ['design', 'ux', 'figma', 'visual', 'mockup', 'wireframe', 'sketch', 'photoshop'],
+  tester: ['test', 'qa', 'quality', 'automation', 'cypress', 'jest', 'selenium', 'e2e'],
+  researcher: ['research', 'analysis', 'data', 'insights', 'report', 'documentation'],
+  devops: ['devops', 'ci', 'cd', 'docker', 'kubernetes', 'aws', 'azure', 'infrastructure', 'deploy'],
+};
 
 /**
  * Default agent labels (emoji + name)
@@ -141,7 +155,7 @@ export function createRolesHandlers(store, options = {}) {
   /**
    * roles.list - List all agents with their assigned roles
    * Params: { includeUnassigned?: boolean }
-   * Response: { agents: array }
+   * Response: { agents: array, roleDescriptions: object }
    */
   handlers['roles.list'] = ({ params, respond }) => {
     const { includeUnassigned = false } = params || {};
@@ -150,6 +164,7 @@ export function createRolesHandlers(store, options = {}) {
       const data = store.load();
       const config = data.config || {};
       const configuredRoles = config.agentRoles || {};
+      const roleDescriptions = config.roles || {};
       const defaults = getDefaultRoles();
 
       // Build map of agentId -> { roles, label }
@@ -223,7 +238,15 @@ export function createRolesHandlers(store, options = {}) {
         return a.id.localeCompare(b.id);
       });
 
-      respond(true, { agents });
+      // Build role descriptions map for the response
+      const descriptions = {};
+      for (const role of Object.keys(roleDescriptions)) {
+        if (roleDescriptions[role]?.description) {
+          descriptions[role] = roleDescriptions[role].description;
+        }
+      }
+
+      respond(true, { agents, roleDescriptions: descriptions });
     } catch (err) {
       respond(false, null, err.message);
     }
@@ -343,6 +366,188 @@ export function createRolesHandlers(store, options = {}) {
         emoji: newLabel.emoji,
         name: newLabel.name,
       });
+    } catch (err) {
+      respond(false, null, err.message);
+    }
+  };
+
+  /**
+   * roles.autoDetect - Auto-detect roles based on agent SOUL.md/IDENTITY.md
+   * Params: {}
+   * Response: { suggestions: [{ agentId, suggestedRole, confidence, reason }] }
+   */
+  handlers['roles.autoDetect'] = ({ params, respond }) => {
+    try {
+      const workspacesEnv = process.env.CLAWCONDOS_AGENT_WORKSPACES;
+      
+      if (!workspacesEnv) {
+        return respond(true, {
+          suggestions: [],
+          note: 'CLAWCONDOS_AGENT_WORKSPACES env var not set',
+        });
+      }
+
+      // Parse workspace paths (comma-separated: "agentId=/path/to/workspace,...")
+      const workspaces = workspacesEnv.split(',').map(entry => {
+        const [agentId, path] = entry.trim().split('=');
+        return { agentId: agentId?.trim(), path: path?.trim() };
+      }).filter(w => w.agentId && w.path);
+
+      const suggestions = [];
+
+      for (const { agentId, path } of workspaces) {
+        // Try to read SOUL.md or IDENTITY.md
+        let content = null;
+        const soulPath = join(path, 'SOUL.md');
+        const identityPath = join(path, 'IDENTITY.md');
+
+        try {
+          if (existsSync(soulPath)) {
+            content = readFileSync(soulPath, 'utf-8');
+          } else if (existsSync(identityPath)) {
+            content = readFileSync(identityPath, 'utf-8');
+          }
+        } catch (err) {
+          // Skip this agent if we can't read the file
+          if (logger) {
+            logger.warn(`roles.autoDetect: Could not read identity file for ${agentId}: ${err.message}`);
+          }
+          continue;
+        }
+
+        if (!content) {
+          continue;
+        }
+
+        // Analyze content for keywords
+        const contentLower = content.toLowerCase();
+        const roleScores = {};
+
+        for (const [role, keywords] of Object.entries(ROLE_KEYWORDS)) {
+          let score = 0;
+          const matchedKeywords = [];
+
+          for (const keyword of keywords) {
+            // Count occurrences (case insensitive)
+            const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+            const matches = contentLower.match(regex);
+            if (matches) {
+              score += matches.length;
+              if (!matchedKeywords.includes(keyword)) {
+                matchedKeywords.push(keyword);
+              }
+            }
+          }
+
+          if (score > 0) {
+            roleScores[role] = { score, keywords: matchedKeywords };
+          }
+        }
+
+        // Find the best matching role
+        const sortedRoles = Object.entries(roleScores)
+          .sort(([, a], [, b]) => b.score - a.score);
+
+        if (sortedRoles.length > 0) {
+          const [bestRole, { score, keywords }] = sortedRoles[0];
+          
+          // Calculate confidence (0-1) based on score and keyword variety
+          const confidence = Math.min(1, (score / 10) * (keywords.length / 3));
+
+          suggestions.push({
+            agentId,
+            suggestedRole: bestRole,
+            confidence: Math.round(confidence * 100) / 100,
+            reason: `Found keywords: ${keywords.join(', ')}`,
+            matchedKeywords: keywords,
+          });
+        }
+      }
+
+      if (logger) {
+        logger.info(`roles.autoDetect: Detected ${suggestions.length} role suggestions`);
+      }
+
+      respond(true, { suggestions });
+    } catch (err) {
+      respond(false, null, err.message);
+    }
+  };
+
+  /**
+   * roles.applyAutoDetect - Apply auto-detected role suggestions
+   * Params: { suggestions: [{ agentId, role, description? }] }
+   * Response: { ok: boolean, applied: number }
+   */
+  handlers['roles.applyAutoDetect'] = ({ params, respond }) => {
+    const { suggestions } = params || {};
+
+    if (!Array.isArray(suggestions) || suggestions.length === 0) {
+      return respond(false, null, 'suggestions array is required');
+    }
+
+    try {
+      const data = store.load();
+      
+      if (!data.config) {
+        data.config = {};
+      }
+      if (!data.config.agentRoles) {
+        data.config.agentRoles = {};
+      }
+      if (!data.config.roles) {
+        data.config.roles = {};
+      }
+
+      let applied = 0;
+      const results = [];
+
+      for (const suggestion of suggestions) {
+        const { agentId, role, description } = suggestion;
+
+        if (!agentId || !role) {
+          results.push({ agentId, role, error: 'agentId and role required' });
+          continue;
+        }
+
+        const normalizedRole = role.toLowerCase();
+        
+        // Set the role mapping
+        data.config.agentRoles[normalizedRole] = agentId;
+
+        // Set description if provided
+        if (description) {
+          if (!data.config.roles[normalizedRole]) {
+            data.config.roles[normalizedRole] = {};
+          }
+          data.config.roles[normalizedRole].description = description;
+        }
+
+        applied++;
+        results.push({ agentId, role: normalizedRole, applied: true });
+      }
+
+      data.config.updatedAtMs = Date.now();
+      store.save(data);
+
+      if (logger) {
+        logger.info(`roles.applyAutoDetect: Applied ${applied} role assignments`);
+      }
+
+      // Broadcast update
+      if (broadcast) {
+        broadcast({
+          type: 'event',
+          event: 'roles.updated',
+          payload: {
+            action: 'autoDetect',
+            applied,
+            timestamp: Date.now(),
+          },
+        });
+      }
+
+      respond(true, { ok: true, applied, results });
     } catch (err) {
       respond(false, null, err.message);
     }

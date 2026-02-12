@@ -134,6 +134,49 @@ describe('config-handlers', () => {
       expect(data.config.agentRoles.backend).toBe('blake');
     });
 
+    it('sets role with description', async () => {
+      const { success, result } = await callHandler('config.setRole', {
+        role: 'frontend',
+        agentId: 'felix',
+        description: 'UI/UX and React specialist',
+      });
+
+      expect(success).toBe(true);
+      expect(result.role).toBe('frontend');
+      expect(result.description).toBe('UI/UX and React specialist');
+      expect(data.config.agentRoles.frontend).toBe('felix');
+      expect(data.config.roles.frontend.description).toBe('UI/UX and React specialist');
+    });
+
+    it('updates description only', async () => {
+      data.config.agentRoles = { backend: 'blake' };
+      
+      const { success, result } = await callHandler('config.setRole', {
+        role: 'backend',
+        agentId: 'blake',
+        description: 'API and database specialist',
+      });
+
+      expect(success).toBe(true);
+      expect(result.description).toBe('API and database specialist');
+      expect(data.config.roles.backend.description).toBe('API and database specialist');
+    });
+
+    it('clears description with null', async () => {
+      data.config.agentRoles = { backend: 'blake' };
+      data.config.roles = { backend: { description: 'Old description' } };
+      
+      const { success, result } = await callHandler('config.setRole', {
+        role: 'backend',
+        agentId: 'blake',
+        description: null,
+      });
+
+      expect(success).toBe(true);
+      expect(result.description).toBeNull();
+      expect(data.config.roles).toBeUndefined(); // Cleaned up empty object
+    });
+
     it('clears role mapping with null', async () => {
       data.config.agentRoles = { backend: 'blake' };
       
@@ -191,6 +234,21 @@ describe('config-handlers', () => {
       // When not configured and no env var, falls back to default (from getDefaultRoles)
       expect(result.roles.pm).toBeDefined();
       expect(result.roles.pm.configured).toBeNull();
+    });
+
+    it('includes role descriptions', async () => {
+      data.config.agentRoles = { frontend: 'felix' };
+      data.config.roles = {
+        frontend: { description: 'UI/UX specialist' },
+        backend: { description: 'API developer' },
+      };
+      
+      const { success, result } = await callHandler('config.listRoles', {});
+
+      expect(success).toBe(true);
+      expect(result.roles.frontend.description).toBe('UI/UX specialist');
+      expect(result.roles.backend.description).toBe('API developer');
+      expect(result.roles.pm.description).toBeNull();  // No description set
     });
   });
 });

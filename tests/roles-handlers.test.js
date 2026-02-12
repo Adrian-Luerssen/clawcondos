@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, rmSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { createGoalsStore } from '../clawcondos/condo-management/lib/goals-store.js';
 import { createRolesHandlers } from '../clawcondos/condo-management/lib/roles-handlers.js';
@@ -273,6 +273,193 @@ describe('Roles Handlers', () => {
 
       expect(result.ok).toBe(false);
       expect(result.err).toContain('emoji or name is required');
+    });
+  });
+
+  describe('roles.list with descriptions', () => {
+    it('returns role descriptions when configured', () => {
+      // First set up a role with description via config
+      const data = store.load();
+      data.config = data.config || {};
+      data.config.agentRoles = { frontend: 'felix' };
+      data.config.roles = {
+        frontend: { description: 'UI/UX and React specialist' },
+      };
+      store.save(data);
+
+      let result;
+      handlers['roles.list']({
+        params: {},
+        respond: (ok, payload, err) => { result = { ok, payload, err }; },
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.payload.roleDescriptions).toBeDefined();
+      expect(result.payload.roleDescriptions.frontend).toBe('UI/UX and React specialist');
+    });
+  });
+
+  describe('roles.autoDetect', () => {
+    const AGENT_WORKSPACES_DIR = join(TEST_DIR, 'agent-workspaces');
+
+    beforeEach(() => {
+      mkdirSync(AGENT_WORKSPACES_DIR, { recursive: true });
+    });
+
+    it('returns empty suggestions when env var not set', () => {
+      delete process.env.CLAWCONDOS_AGENT_WORKSPACES;
+
+      let result;
+      handlers['roles.autoDetect']({
+        params: {},
+        respond: (ok, payload, err) => { result = { ok, payload, err }; },
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.payload.suggestions).toEqual([]);
+      expect(result.payload.note).toContain('CLAWCONDOS_AGENT_WORKSPACES');
+    });
+
+    it('detects frontend role from SOUL.md', () => {
+      // Create a mock agent workspace with SOUL.md
+      const felixDir = join(AGENT_WORKSPACES_DIR, 'felix');
+      mkdirSync(felixDir, { recursive: true });
+      writeFileSync(
+        join(felixDir, 'SOUL.md'),
+        '# Felix\n\nI am a frontend developer specializing in React and UI development.\nI work with CSS, HTML, and modern web technologies.'
+      );
+
+      process.env.CLAWCONDOS_AGENT_WORKSPACES = `felix=${felixDir}`;
+
+      let result;
+      handlers['roles.autoDetect']({
+        params: {},
+        respond: (ok, payload, err) => { result = { ok, payload, err }; },
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.payload.suggestions).toHaveLength(1);
+      expect(result.payload.suggestions[0].agentId).toBe('felix');
+      expect(result.payload.suggestions[0].suggestedRole).toBe('frontend');
+      expect(result.payload.suggestions[0].confidence).toBeGreaterThan(0);
+      expect(result.payload.suggestions[0].matchedKeywords).toContain('frontend');
+    });
+
+    it('detects backend role from IDENTITY.md', () => {
+      const blakeDir = join(AGENT_WORKSPACES_DIR, 'blake');
+      mkdirSync(blakeDir, { recursive: true });
+      writeFileSync(
+        join(blakeDir, 'IDENTITY.md'),
+        '# Blake\n\nBackend developer focused on API design and database management.\nI work with Node.js, Python, and SQL databases.'
+      );
+
+      process.env.CLAWCONDOS_AGENT_WORKSPACES = `blake=${blakeDir}`;
+
+      let result;
+      handlers['roles.autoDetect']({
+        params: {},
+        respond: (ok, payload, err) => { result = { ok, payload, err }; },
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.payload.suggestions).toHaveLength(1);
+      expect(result.payload.suggestions[0].agentId).toBe('blake');
+      expect(result.payload.suggestions[0].suggestedRole).toBe('backend');
+    });
+
+    it('detects multiple agents', () => {
+      const felixDir = join(AGENT_WORKSPACES_DIR, 'felix');
+      const blakeDir = join(AGENT_WORKSPACES_DIR, 'blake');
+      mkdirSync(felixDir, { recursive: true });
+      mkdirSync(blakeDir, { recursive: true });
+
+      writeFileSync(join(felixDir, 'SOUL.md'), 'Frontend React developer');
+      writeFileSync(join(blakeDir, 'SOUL.md'), 'Backend API developer');
+
+      process.env.CLAWCONDOS_AGENT_WORKSPACES = `felix=${felixDir},blake=${blakeDir}`;
+
+      let result;
+      handlers['roles.autoDetect']({
+        params: {},
+        respond: (ok, payload, err) => { result = { ok, payload, err }; },
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.payload.suggestions).toHaveLength(2);
+    });
+
+    afterEach(() => {
+      delete process.env.CLAWCONDOS_AGENT_WORKSPACES;
+    });
+  });
+
+  describe('roles.applyAutoDetect', () => {
+    it('applies role suggestions', () => {
+      let result;
+      handlers['roles.applyAutoDetect']({
+        params: {
+          suggestions: [
+            { agentId: 'felix', role: 'frontend', description: 'React specialist' },
+            { agentId: 'blake', role: 'backend', description: 'API developer' },
+          ],
+        },
+        respond: (ok, payload, err) => { result = { ok, payload, err }; },
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.payload.applied).toBe(2);
+
+      // Verify persistence
+      const data = store.load();
+      expect(data.config.agentRoles.frontend).toBe('felix');
+      expect(data.config.agentRoles.backend).toBe('blake');
+      expect(data.config.roles.frontend.description).toBe('React specialist');
+      expect(data.config.roles.backend.description).toBe('API developer');
+    });
+
+    it('broadcasts roles.updated event', () => {
+      handlers['roles.applyAutoDetect']({
+        params: {
+          suggestions: [{ agentId: 'felix', role: 'frontend' }],
+        },
+        respond: () => {},
+      });
+
+      expect(broadcastCalls.length).toBeGreaterThan(0);
+      const event = broadcastCalls.find(c => c.event === 'roles.updated' && c.payload.action === 'autoDetect');
+      expect(event).toBeTruthy();
+      expect(event.payload.applied).toBe(1);
+    });
+
+    it('returns error if suggestions array is empty', () => {
+      let result;
+      handlers['roles.applyAutoDetect']({
+        params: { suggestions: [] },
+        respond: (ok, payload, err) => { result = { ok, payload, err }; },
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.err).toContain('suggestions array is required');
+    });
+
+    it('skips suggestions without required fields', () => {
+      let result;
+      handlers['roles.applyAutoDetect']({
+        params: {
+          suggestions: [
+            { agentId: 'felix', role: 'frontend' },
+            { agentId: 'blake' },  // Missing role
+            { role: 'designer' },  // Missing agentId
+          ],
+        },
+        respond: (ok, payload, err) => { result = { ok, payload, err }; },
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.payload.applied).toBe(1);
+      expect(result.payload.results).toHaveLength(3);
+      expect(result.payload.results[1].error).toBeDefined();
+      expect(result.payload.results[2].error).toBeDefined();
     });
   });
 });

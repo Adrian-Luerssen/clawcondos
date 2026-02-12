@@ -122,11 +122,11 @@ export function createConfigHandlers(store, options = {}) {
 
   /**
    * config.setRole - Set a single agent role mapping
-   * Params: { role: string, agentId: string }
+   * Params: { role: string, agentId: string, description?: string }
    * Response: { ok: boolean }
    */
   handlers['config.setRole'] = ({ params, respond }) => {
-    const { role, agentId } = params || {};
+    const { role, agentId, description } = params || {};
 
     if (!role || typeof role !== 'string') {
       return respond(false, null, 'role is required');
@@ -142,11 +142,39 @@ export function createConfigHandlers(store, options = {}) {
         data.config.agentRoles = {};
       }
 
+      const normalizedRole = role.toLowerCase();
+
       if (agentId === null || agentId === '' || agentId === undefined) {
         // Remove custom mapping
-        delete data.config.agentRoles[role.toLowerCase()];
+        delete data.config.agentRoles[normalizedRole];
       } else {
-        data.config.agentRoles[role.toLowerCase()] = agentId;
+        data.config.agentRoles[normalizedRole] = agentId;
+      }
+
+      // Handle role descriptions
+      if (description !== undefined) {
+        if (!data.config.roles) {
+          data.config.roles = {};
+        }
+        if (description === null || description === '') {
+          // Remove description
+          if (data.config.roles[normalizedRole]) {
+            delete data.config.roles[normalizedRole].description;
+            // Clean up empty role entry
+            if (Object.keys(data.config.roles[normalizedRole]).length === 0) {
+              delete data.config.roles[normalizedRole];
+            }
+          }
+        } else {
+          if (!data.config.roles[normalizedRole]) {
+            data.config.roles[normalizedRole] = {};
+          }
+          data.config.roles[normalizedRole].description = description;
+        }
+        // Clean up empty roles object
+        if (Object.keys(data.config.roles).length === 0) {
+          delete data.config.roles;
+        }
       }
 
       // Clean up empty object
@@ -158,17 +186,18 @@ export function createConfigHandlers(store, options = {}) {
       store.save(data);
 
       if (logger) {
-        logger.info(`config.setRole: ${role} -> ${agentId || '(default)'}`);
+        logger.info(`config.setRole: ${role} -> ${agentId || '(default)'}${description ? ` (${description})` : ''}`);
       }
 
       // Return resolved agent ID
-      const resolved = getAgentForRole(data, role.toLowerCase());
+      const resolved = getAgentForRole(data, normalizedRole);
 
       respond(true, {
         ok: true,
-        role: role.toLowerCase(),
+        role: normalizedRole,
         agentId: agentId || null,
         resolved,
+        description: data.config.roles?.[normalizedRole]?.description || null,
       });
     } catch (err) {
       respond(false, null, err.message);
@@ -213,17 +242,23 @@ export function createConfigHandlers(store, options = {}) {
     try {
       const data = store.load();
       const configured = data.config?.agentRoles || {};
+      const roleDescriptions = data.config?.roles || {};
       const defaults = getDefaultRoles();
       
       // Build complete list with resolution
       const roles = {};
-      const allRoles = new Set([...Object.keys(defaults), ...Object.keys(configured)]);
+      const allRoles = new Set([
+        ...Object.keys(defaults),
+        ...Object.keys(configured),
+        ...Object.keys(roleDescriptions),
+      ]);
       
       for (const role of allRoles) {
         roles[role] = {
           agentId: getAgentForRole(data, role),
           configured: configured[role] || null,
           default: defaults[role] || role,
+          description: roleDescriptions[role]?.description || null,
         };
       }
 

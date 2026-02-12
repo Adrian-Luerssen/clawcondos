@@ -38,6 +38,40 @@ describe('Skill Injector', () => {
       const context = getPmSkillContext();
       expect(context).toContain('## PM Session Context');
     });
+
+    it('includes available roles section when provided', () => {
+      const context = getPmSkillContext({
+        roles: {
+          frontend: { agentId: 'felix', description: 'UI/UX and React specialist' },
+          backend: { agentId: 'blake', description: 'API and database developer' },
+        },
+      });
+
+      expect(context).toContain('## Available Roles');
+      expect(context).toContain('**frontend** (felix): UI/UX and React specialist');
+      expect(context).toContain('**backend** (blake): API and database developer');
+    });
+
+    it('uses default role descriptions when not provided', () => {
+      const context = getPmSkillContext({
+        roles: {
+          frontend: { agentId: 'felix' },  // No description
+        },
+      });
+
+      expect(context).toContain('## Available Roles');
+      expect(context).toContain('**frontend** (felix):');
+      // Should have some default description
+      expect(context).toMatch(/frontend.*UI.*specialist/i);
+    });
+
+    it('omits roles section when roles is empty', () => {
+      const context = getPmSkillContext({
+        roles: {},
+      });
+
+      expect(context).not.toContain('## Available Roles');
+    });
   });
 
   describe('getWorkerSkillContext', () => {

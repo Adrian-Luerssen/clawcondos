@@ -71,6 +71,7 @@ export function clearSkillCache() {
  * @param {number} [options.activeGoals] - Number of active goals
  * @param {number} [options.totalTasks] - Total task count
  * @param {number} [options.pendingTasks] - Pending task count
+ * @param {object} [options.roles] - Available roles with descriptions { role: { description, agentId } }
  * @returns {string|null} PM skill context or null if unavailable
  */
 export function getPmSkillContext(options = {}) {
@@ -83,6 +84,7 @@ export function getPmSkillContext(options = {}) {
     activeGoals,
     totalTasks,
     pendingTasks,
+    roles,
   } = options;
   
   // Build PM session context header
@@ -104,9 +106,40 @@ export function getPmSkillContext(options = {}) {
     header.push(`- **Tasks:** ${totalTasks} total, ${pending} pending`);
   }
   
+  // Add available roles section if provided
+  if (roles && typeof roles === 'object' && Object.keys(roles).length > 0) {
+    header.push('');
+    header.push('## Available Roles');
+    
+    for (const [role, info] of Object.entries(roles)) {
+      const desc = info?.description || getDefaultRoleDescription(role);
+      const agentId = info?.agentId || role;
+      header.push(`- **${role}** (${agentId}): ${desc}`);
+    }
+  }
+  
   header.push('---', '');
   
   return header.join('\n') + skillContent;
+}
+
+/**
+ * Get default description for a role
+ * @param {string} role - Role name
+ * @returns {string} Default description
+ */
+function getDefaultRoleDescription(role) {
+  const defaults = {
+    pm: 'Project manager, coordinates tasks and agents',
+    frontend: 'UI/UX specialist, handles client-side code and interfaces',
+    backend: 'API developer, handles server-side logic and databases',
+    designer: 'Visual designer, creates mockups and design systems',
+    tester: 'QA specialist, writes and runs tests',
+    devops: 'Infrastructure and deployment specialist',
+    qa: 'Quality assurance, reviews and validates work',
+    researcher: 'Research and analysis specialist',
+  };
+  return defaults[role.toLowerCase()] || 'Specialist agent';
 }
 
 /**
