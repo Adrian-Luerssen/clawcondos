@@ -3713,13 +3713,18 @@
     
     /**
      * Append a local message to the goal chat (optimistic UI)
+     * @param {string} role - 'user', 'assistant', 'error', or null for thinking
+     * @param {string} content - Message content
+     * @param {boolean} isThinking - Show thinking indicator
+     * @param {Object} options - Additional options (hasPlan, etc.)
      */
-    function appendGoalChatMessage(role, content, isThinking) {
+    function appendGoalChatMessage(role, content, isThinking, options) {
       const container = document.getElementById('goal_chatMessages');
       if (!container) return;
       
       const timeHtml = formatMessageTime(new Date());
       const messageId = 'goal-msg-' + Date.now();
+      const opts = options || {};
       
       let html = '';
       if (isThinking) {
@@ -3732,9 +3737,14 @@
           '<div class="message-time">' + timeHtml + '</div>' +
           '</div>';
       } else if (role === 'assistant') {
+        let planActionsHtml = '';
+        if (opts.hasPlan) {
+          planActionsHtml = renderPlanActionButtons();
+        }
         html = '<div class="message assistant" id="' + messageId + '">' +
           '<div class="message-content">' + formatMessage(content) + '</div>' +
           '<div class="message-time">' + timeHtml + '</div>' +
+          planActionsHtml +
           '</div>';
       } else if (role === 'error') {
         html = '<div class="message system error" id="' + messageId + '" style="color: var(--red);">' +
@@ -3752,6 +3762,208 @@
       }, 50);
       
       return messageId;
+    }
+    
+    /**
+     * Detect if message content contains a plan (tables, task lists, ## Tasks, etc.)
+     * @param {string} content - Message content
+     * @returns {boolean}
+     */
+    function detectPlanInContent(content) {
+      if (!content || typeof content !== 'string') return false;
+      
+      // Patterns that indicate a plan
+      const planPatterns = [
+        /##\s*Tasks?/i,                    // ## Tasks or ## Task
+        /##\s*Plan/i,                       // ## Plan
+        /\|\s*Task\s*\|/i,                 // Table with Task column
+        /\|\s*Agent\s*\|/i,                // Table with Agent column
+        /\|\s*Status\s*\|/i,               // Table with Status column
+        /^\s*[-*]\s*\[[ x]\]/m,            // Checkbox lists
+        /proposed\s*plan/i,                 // "proposed plan"
+        /task\s*breakdown/i,               // "task breakdown"
+        /here'?s?\s*(the\s*)?plan/i,       // "here's the plan"
+      ];
+      
+      return planPatterns.some(pattern => pattern.test(content));
+    }
+    
+    /**
+     * Render the plan action buttons HTML
+     * @returns {string} HTML string
+     */
+    function renderPlanActionButtons() {
+      const goal = state.goals.find(g => g.id === state.currentGoalOpenId);
+      const hasTasks = goal && Array.isArray(goal.tasks) && goal.tasks.length > 0;
+      const hasActiveSessions = goal && (
+        (Array.isArray(goal.sessions) && goal.sessions.length > 0) ||
+        (Array.isArray(goal.tasks) && goal.tasks.some(t => t.sessionKey))
+      );
+      
+      const createTasksDisabled = hasTasks ? 'disabled' : '';
+      const startGoalDisabled = (!hasTasks || hasActiveSessions) ? 'disabled' : '';
+      
+      return '<div class="pm-plan-actions" id="pmPlanActions">' +
+        '<button class="pm-action-btn primary" ' +
+          'data-action="create-tasks" ' +
+          createTasksDisabled + ' ' +
+          'onclick="createTasksFromPlan()" ' +
+          'title="' + (hasTasks ? 'Tasks already created' : 'Create tasks from this plan') + '">' +
+          '📋 Create Tasks' +
+        '</button>' +
+        '<button class="pm-action-btn success" ' +
+          'data-action="start-goal" ' +
+          startGoalDisabled + ' ' +
+          'onclick="startGoalKickoff()" ' +
+          'title="' + (!hasTasks ? 'Create tasks first' : (hasActiveSessions ? 'Sessions already active' : 'Spawn agents and start working')) + '">' +
+          '🚀 Start Goal' +
+        '</button>' +
+        '</div>';
+    }
+    
+    /**
+     * Create tasks from the PM's proposed plan
+     */
+    async function createTasksFromPlan() {
+      const goalId = state.currentGoalOpenId;
+      const goal = state.goals.find(g => g.id === goalId);
+      if (!goal) {
+        showToast('No goal selected', 'error');
+        return;
+      }
+      
+      // Disable button and show loading state
+      const btn = document.querySelector('.pm-action-btn[data-action="create-tasks"]');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-spinner"></span> Creating...';
+      }
+      
+      try {
+        const condoId = goal.condoId;
+        if (!condoId) {
+          throw new Error('Goal not associated with a condo');
+        }
+        
+        // Call PM RPC to create tasks from the plan
+        const result = await rpcCall('pm.createTasksFromPlan', {
+          condoId: condoId,
+          goalId: goalId,
+        }, 60000);
+        
+        if (result && result.success) {
+          showToast('✅ Tasks created from plan!', 'success');
+          
+          // Update button state
+          if (btn) {
+            btn.innerHTML = '✓ Tasks Created';
+            btn.classList.add('created');
+          }
+          
+          // Enable the Start Goal button now that tasks exist
+          const startBtn = document.querySelector('.pm-action-btn[data-action="start-goal"]');
+          if (startBtn) {
+            startBtn.disabled = false;
+          }
+          
+          // Mark the actions container
+          const actionsContainer = document.getElementById('pmPlanActions');
+          if (actionsContainer) {
+            actionsContainer.classList.add('tasks-created');
+          }
+          
+          // Reload goals to show new tasks
+          await loadGoals();
+          renderGoalPane();
+        } else {
+          throw new Error(result?.error || 'Failed to create tasks');
+        }
+      } catch (err) {
+        console.error('Create tasks error:', err);
+        showToast('❌ Failed to create tasks: ' + (err.message || 'Unknown error'), 'error');
+        
+        // Reset button
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '📋 Create Tasks';
+        }
+      }
+    }
+    
+    /**
+     * Start goal kickoff - spawn agents and begin execution
+     */
+    async function startGoalKickoff() {
+      const goalId = state.currentGoalOpenId;
+      const goal = state.goals.find(g => g.id === goalId);
+      if (!goal) {
+        showToast('No goal selected', 'error');
+        return;
+      }
+      
+      // Check if tasks exist
+      if (!goal.tasks || goal.tasks.length === 0) {
+        showToast('Create tasks first before starting', 'warning');
+        return;
+      }
+      
+      // Disable button and show loading state
+      const btn = document.querySelector('.pm-action-btn[data-action="start-goal"]');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-spinner"></span> Starting...';
+      }
+      
+      try {
+        // Call goals.kickoff RPC
+        const result = await rpcCall('goals.kickoff', {
+          goalId: goalId,
+        }, 120000); // 2 minute timeout for spawning
+        
+        if (result && result.success) {
+          showToast('🚀 Goal kicked off! Agents are starting work.', 'success');
+          
+          // Hide the action buttons
+          const actionsContainer = document.getElementById('pmPlanActions');
+          if (actionsContainer) {
+            actionsContainer.classList.add('hidden');
+          }
+          
+          // Track spawned agents for UI update
+          if (result.spawnedSessions) {
+            state.kickoffAgents = result.spawnedSessions;
+            
+            // Auto-subscribe to first spawned session for Team tab
+            if (result.spawnedSessions.length > 0) {
+              state.goalChatSessionKey = result.spawnedSessions[0].sessionKey;
+            }
+          }
+          
+          // Refresh data
+          await Promise.all([loadGoals(), loadSessions()]);
+          
+          if (state.currentGoalOpenId === goalId) {
+            renderGoalView();
+            
+            // Auto-switch to Team tab to show working agents
+            if (result.spawnedSessions && result.spawnedSessions.length > 0) {
+              setGoalChatMode('team');
+              showToast('Switched to Team tab to follow agent progress', 'info');
+            }
+          }
+        } else {
+          throw new Error(result?.error || 'Kickoff failed');
+        }
+      } catch (err) {
+        console.error('Start goal error:', err);
+        showToast('❌ Failed to start goal: ' + (err.message || 'Unknown error'), 'error');
+        
+        // Reset button
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '🚀 Start Goal';
+        }
+      }
     }
     
     /**
@@ -3800,7 +4012,9 @@
             removeGoalChatThinking();
             
             if (result?.response) {
-              appendGoalChatMessage('assistant', result.response);
+              // Check if the response contains a plan (hasPlan flag or plan patterns)
+              const hasPlan = result.hasPlan || detectPlanInContent(result.response);
+              appendGoalChatMessage('assistant', result.response, false, { hasPlan: hasPlan });
             }
             
             if (result?.planUpdated) {
