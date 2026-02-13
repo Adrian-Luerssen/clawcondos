@@ -84,7 +84,8 @@ GATEWAY_WS_URL=ws://127.0.0.1:18789/ws
 GATEWAY_AUTH=your-gateway-token-here
 
 # Condo workspaces — git repos per condo, worktrees per goal
-# This MUST be set for workspace/worktree features to work.
+# This MUST be set in BOTH the ClawCondos env AND the OpenClaw Gateway service
+# for workspace/worktree features to work (the plugin runs inside the gateway).
 # Create the directory first: mkdir -p /home/youruser/clawcondos-workspaces
 CLAWCONDOS_WORKSPACES_DIR=/home/youruser/clawcondos-workspaces
 EOF
@@ -226,7 +227,7 @@ These override config.json:
 | `GATEWAY_HTTP_HOST` | HTTP host for gateway |
 | `GATEWAY_AUTH` | Bearer token for gateway auth |
 | `PORT` | Server port (default: 9000) |
-| `CLAWCONDOS_WORKSPACES_DIR` | Base directory for condo git workspaces and goal worktrees (disabled if not set) |
+| `CLAWCONDOS_WORKSPACES_DIR` | Base directory for condo git workspaces and goal worktrees (disabled if not set). **Must be set on the OpenClaw Gateway service** since the plugin runs there. |
 | `CLAWCONDOS_CLASSIFICATION` | Set to `off` to disable auto-classification of unbound sessions |
 | `CLAWCONDOS_AGENT_WORKSPACES` | JSON mapping agent IDs to workspace paths for introspection |
 | `CLAWCONDOS_SKILLS_DIRS` | Colon-separated skill directory paths |

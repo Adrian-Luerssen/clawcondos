@@ -227,10 +227,22 @@ export default function register(api) {
       }
 
       const tasks = goal.tasks || [];
-      const tasksToSpawn = tasks.filter(t =>
-        !t.sessionKey &&
-        t.status !== 'done'
-      );
+
+      // Collect IDs of tasks that are already done
+      const doneTasks = new Set(tasks.filter(t => t.status === 'done' || t.done).map(t => t.id));
+
+      const tasksToSpawn = tasks.filter(t => {
+        // Skip already-assigned or done tasks
+        if (t.sessionKey || t.status === 'done') return false;
+
+        // Check dependency ordering: only spawn if ALL dependencies are done
+        if (Array.isArray(t.dependsOn) && t.dependsOn.length > 0) {
+          const allDepsDone = t.dependsOn.every(depId => doneTasks.has(depId));
+          if (!allDepsDone) return false;
+        }
+
+        return true;
+      });
 
       if (tasksToSpawn.length === 0) {
         return respond(true, {
