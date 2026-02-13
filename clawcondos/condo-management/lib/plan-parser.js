@@ -357,7 +357,9 @@ export function detectPlan(content) {
 
 /**
  * Parse all tasks from a plan (tables + lists)
- * 
+ * Prefers table tasks — if a table produced results, list parsing is skipped
+ * to avoid picking up descriptive bullet points as extra tasks.
+ *
  * @param {string} content - Plan markdown content
  * @returns {{tasks: Array<{text: string, agent: string|null, time: string|null, description: string}>, hasPlan: boolean}}
  */
@@ -365,26 +367,32 @@ export function parseTasksFromPlan(content) {
   if (!content || typeof content !== 'string') {
     return { tasks: [], hasPlan: false };
   }
-  
+
   const hasPlan = detectPlan(content);
-  
-  // Parse from both tables and lists
+
+  // Prefer table tasks — they're structured and authoritative
   const tableTasks = parseTasksFromTable(content);
+
+  // Only fall back to list parsing if no table tasks were found
+  if (tableTasks.length > 0) {
+    return { tasks: tableTasks, hasPlan };
+  }
+
+  // No table found — try parsing from lists
   const listTasks = parseTasksFromLists(content);
-  
-  // Merge and dedupe (prefer table tasks as they're more structured)
+
+  // Dedupe
   const seenTexts = new Set();
   const tasks = [];
-  
-  for (const task of [...tableTasks, ...listTasks]) {
-    // Normalize for deduplication
+
+  for (const task of listTasks) {
     const normalizedText = task.text.toLowerCase().replace(/\s+/g, ' ').trim();
     if (!seenTexts.has(normalizedText)) {
       seenTexts.add(normalizedText);
       tasks.push(task);
     }
   }
-  
+
   return { tasks, hasPlan };
 }
 

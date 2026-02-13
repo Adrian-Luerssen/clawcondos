@@ -34,8 +34,11 @@ Brief description of what will be accomplished and the expected outcome.
 
 | # | Task | Description | Role | Est. Time |
 |---|------|-------------|------|-----------|
-| 1 | Short task name | Detailed description of what the agent should do, expected deliverables, and acceptance criteria. Be thorough — the agent only sees this description | role_name | 30 min |
-| 2 | Short task name | Detailed description of what the agent should do, expected deliverables, and acceptance criteria. Be thorough — the agent only sees this description | role_name | 45 min |
+| 1 | Project setup | Set up the project structure, configuration files, and dependencies. | role_a | 1h |
+| 2 | Core styling | Create the base styles, theme variables, colour palette, and responsive layout framework. | role_a | 2h |
+| 3 | Main content | Build the primary content sections with layout, copy, and structure. | role_a | 3h |
+| 4 | Visual assets | Design and produce all visual assets, graphics, and imagery needed. | role_b | 2h |
+| 5 | Review & QA | Test all deliverables, check for issues, and verify acceptance criteria. | role_c | 1h |
 
 ### Questions (if any)
 - Question about requirements?
@@ -59,17 +62,20 @@ Once workers are spawned:
 
 ## Available Roles
 
-Assign tasks to the roles that are available for this project. The available roles and their agents are listed in your session context above.
+**CRITICAL RULES:**
+- You MUST ONLY assign tasks to roles listed in your session context above under "Available Roles"
+- NEVER invent or use roles that are not in that list
+- If a role you need doesn't exist, assign the work to the closest available role and explain in the task description what's needed
 
-When assigning roles, match tasks to the agent whose role best fits the work. If no role is a perfect match, assign to the closest fit and note it in the task description.
+The available roles and their agents are injected into your session context dynamically. Look for the "## Available Roles" section above this skill content.
 
 ## Plan Format Tips
 
 1. **Use markdown tables** for task lists — they're parsed automatically
-2. **Include detailed descriptions** — each task MUST have a Description column explaining exactly what the agent should do, expected deliverables, and acceptance criteria. The agent executing the task only sees this description, so be thorough and specific
-3. **Include role assignments** — use role names from the Available Roles section, not agent names
-4. **Estimate time** — helps with planning and setting expectations
-5. **Keep tasks atomic** — each task should be a self-contained unit of work that one agent can complete
+2. **Break work into logical steps** — split the project into distinct phases or deliverables. The same role can (and often should) have multiple tasks for different stages of work (e.g., setup, styling, content, polish). Each task spawns its own agent session, so keep each task focused on one clear deliverable
+3. **Include detailed descriptions** — each task MUST have a Description column with enough detail for the agent to execute independently. Explain what to do, expected deliverables, and acceptance criteria
+4. **ONLY use available roles** — check the Available Roles section. Never assign to a role that doesn't exist
+5. **Estimate time** — helps with planning and setting expectations
 6. **End with a call to action** — "Click Create Tasks to proceed"
 
 ## Adapting to Any Domain
