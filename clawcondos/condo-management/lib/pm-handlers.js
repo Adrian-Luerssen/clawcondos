@@ -11,6 +11,17 @@ import { parseTasksFromPlan, detectPlan, parseGoalsFromPlan, detectCondoPlan } f
 const DEFAULT_HISTORY_LIMIT = 100;
 
 /**
+ * Set sequential dependencies on an array of tasks.
+ * Each task (after the first) depends on the previous task.
+ * @param {Array} tasks - Array of task objects with `id` property
+ */
+function setSequentialDependencies(tasks) {
+  for (let i = 1; i < tasks.length; i++) {
+    tasks[i].dependsOn = [tasks[i - 1].id];
+  }
+}
+
+/**
  * Get or initialize PM chat history for a goal
  * @param {object} goal - Goal object
  * @returns {Array} Chat history array
@@ -481,6 +492,9 @@ export function createPmHandlers(store, options = {}) {
         createdTasks.push(task);
       }
 
+      // Set sequential dependencies so tasks run in order
+      setSequentialDependencies(createdTasks);
+
       goal.updatedAtMs = now;
 
       // Store the full plan content so spawned workers can reference it
@@ -598,6 +612,9 @@ export function createPmHandlers(store, options = {}) {
         goal.tasks.push(task);
         createdTasks.push(task);
       }
+
+      // Set sequential dependencies so tasks run in order
+      setSequentialDependencies(createdTasks);
 
       goal.updatedAtMs = now;
       goal.pmPlanContent = contentToParse;
@@ -928,6 +945,9 @@ export function createPmHandlers(store, options = {}) {
           updatedAtMs: now,
         }));
 
+        // Set sequential dependencies so tasks run in order
+        setSequentialDependencies(tasks);
+
         const goal = {
           id: goalId,
           title: goalData.title,
@@ -936,6 +956,7 @@ export function createPmHandlers(store, options = {}) {
           status: 'active',
           completed: false,
           priority: goalData.priority || null,
+          autonomyMode: condo.autonomyMode || null,
           worktree: null,
           tasks,
           sessions: [],
@@ -943,6 +964,9 @@ export function createPmHandlers(store, options = {}) {
           createdAtMs: now,
           updatedAtMs: now,
         };
+
+        // Store PM plan content on goal so spawned workers can reference it
+        goal.pmPlanContent = contentToParse;
 
         // Create worktree if condo has a workspace
         if (wsOps && condo.workspace?.path) {

@@ -1,3 +1,5 @@
+import { AUTONOMY_MODES } from './autonomy.js';
+
 export function createCondoHandlers(store, options = {}) {
   const { wsOps, logger } = options;
   function loadData() { return store.load(); }
@@ -6,9 +8,13 @@ export function createCondoHandlers(store, options = {}) {
   return {
     'condos.create': ({ params, respond }) => {
       try {
-        const { name, description, color, repoUrl } = params;
+        const { name, description, color, repoUrl, autonomyMode } = params;
         if (!name || typeof name !== 'string' || !name.trim()) {
           respond(false, undefined, { message: 'name is required' });
+          return;
+        }
+        if (autonomyMode && !AUTONOMY_MODES.includes(autonomyMode)) {
+          respond(false, undefined, { message: `Invalid autonomyMode. Must be one of: ${AUTONOMY_MODES.join(', ')}` });
           return;
         }
         const data = loadData();
@@ -21,6 +27,7 @@ export function createCondoHandlers(store, options = {}) {
           color: color || null,
           keywords: Array.isArray(params.keywords) ? params.keywords : [],
           telegramTopicIds: Array.isArray(params.telegramTopicIds) ? params.telegramTopicIds : [],
+          autonomyMode: autonomyMode || null,
           workspace: null,
           createdAtMs: now,
           updatedAtMs: now,
@@ -89,7 +96,13 @@ export function createCondoHandlers(store, options = {}) {
         }
 
         // Whitelist allowed patch fields (prevent overwriting internal fields)
-        const allowed = ['name', 'description', 'color', 'keywords', 'telegramTopicIds'];
+        // Validate autonomyMode if provided
+        if ('autonomyMode' in params && params.autonomyMode !== null && !AUTONOMY_MODES.includes(params.autonomyMode)) {
+          respond(false, undefined, { message: `Invalid autonomyMode. Must be one of: ${AUTONOMY_MODES.join(', ')}` });
+          return;
+        }
+
+        const allowed = ['name', 'description', 'color', 'keywords', 'telegramTopicIds', 'autonomyMode'];
         for (const f of allowed) {
           if (f in params) {
             // Validate array fields

@@ -244,8 +244,18 @@ export function createGoalUpdateExecutor(store) {
       ? ` (${remaining} task${remaining !== 1 ? 's' : ''} remaining)`
       : ' (all tasks done)';
 
+    // Build _meta for task completion events (consumed by index.js wrapper)
+    const _meta = {
+      goalId: goal.id,
+    };
+    if (hasTaskUpdate && status === 'done' && taskId) {
+      _meta.taskCompletedId = taskId;
+      _meta.allTasksDone = remaining === 0;
+    }
+
     return {
       content: [{ type: 'text', text: `Goal "${goal.title}" updated: ${results.join(', ')}.${countSuffix}` }],
+      _meta,
     };
   };
 }

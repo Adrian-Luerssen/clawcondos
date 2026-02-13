@@ -15,7 +15,7 @@ export function createGoalHandlers(store, options = {}) {
 
     'goals.create': ({ params, respond }) => {
       try {
-        const { title, condoId, description, completed, status, priority, deadline, notes, tasks } = params;
+        const { title, condoId, description, completed, status, priority, deadline, notes, tasks, autonomyMode } = params;
         if (!title || typeof title !== 'string' || !title.trim()) {
           respond(false, undefined, { message: 'title is required' });
           return;
@@ -34,6 +34,7 @@ export function createGoalHandlers(store, options = {}) {
           condoId: condoId || null,
           priority: priority || null,
           deadline: deadline || null,
+          autonomyMode: autonomyMode || null,
           worktree: null,
           tasks: [],
           sessions: [],
@@ -101,7 +102,7 @@ export function createGoalHandlers(store, options = {}) {
         }
 
         // Whitelist allowed patch fields (prevent overwriting internal fields)
-        const allowed = ['title', 'description', 'status', 'completed', 'condoId', 'priority', 'deadline', 'notes', 'tasks', 'nextTask', 'dropped', 'droppedAtMs', 'files', 'plan'];
+        const allowed = ['title', 'description', 'status', 'completed', 'condoId', 'priority', 'deadline', 'notes', 'tasks', 'nextTask', 'dropped', 'droppedAtMs', 'files', 'plan', 'autonomyMode'];
         for (const f of allowed) {
           if (f in params) goal[f] = params[f];
         }

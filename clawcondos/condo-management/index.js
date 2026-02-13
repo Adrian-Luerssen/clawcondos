@@ -211,6 +211,112 @@ export default function register(api) {
 
   // goals.kickoff - Spawn sessions for all tasks with assigned agents
   const taskSpawnHandler = createTaskSpawnHandler(store);
+
+  /**
+   * Internal kickoff logic — spawns sessions for unblocked tasks in a goal.
+   * Extracted so it can be reused (e.g., auto re-kickoff after task completion).
+   * @param {string} goalId
+   * @returns {Promise<{goalId, spawnedSessions, errors?, message}>}
+   */
+  async function internalKickoff(goalId) {
+    const data = store.load();
+    const goal = data.goals.find(g => g.id === goalId);
+
+    if (!goal) {
+      throw new Error(`Goal ${goalId} not found`);
+    }
+
+    const tasks = goal.tasks || [];
+
+    // Collect IDs of tasks that are already done
+    const doneTasks = new Set(tasks.filter(t => t.status === 'done' || t.done).map(t => t.id));
+
+    const tasksToSpawn = tasks.filter(t => {
+      // Skip already-assigned or done tasks
+      if (t.sessionKey || t.status === 'done') return false;
+
+      // Check dependency ordering: only spawn if ALL dependencies are done
+      if (Array.isArray(t.dependsOn) && t.dependsOn.length > 0) {
+        const allDepsDone = t.dependsOn.every(depId => doneTasks.has(depId));
+        if (!allDepsDone) return false;
+      }
+
+      return true;
+    });
+
+    if (tasksToSpawn.length === 0) {
+      return {
+        goalId,
+        spawnedSessions: [],
+        message: 'No tasks to spawn',
+      };
+    }
+
+    const spawnedSessions = [];
+    const errors = [];
+
+    for (const task of tasksToSpawn) {
+      try {
+        // Resolve role -> actual agent ID using config, fall back to 'main'
+        const resolvedAgentId = resolveAgent(store, task.assignedAgent) || 'main';
+
+        // Create a promise-based wrapper for the spawn handler
+        const result = await new Promise((resolve, reject) => {
+          taskSpawnHandler({
+            params: {
+              goalId,
+              taskId: task.id,
+              agentId: resolvedAgentId,
+              model: task.model || null,
+            },
+            respond: (success, data, error) => {
+              if (success) {
+                resolve(data);
+              } else {
+                reject(new Error(error?.message || error || 'Spawn failed'));
+              }
+            },
+          });
+        });
+
+        spawnedSessions.push({
+          taskId: task.id,
+          taskText: task.text,
+          sessionKey: result.sessionKey,
+          agentId: result.agentId,
+          assignedRole: task.assignedAgent,  // Original role/spec from task
+          autonomyMode: result.autonomyMode,
+          taskContext: result.taskContext,
+          model: result.model || null,
+        });
+      } catch (err) {
+        errors.push({
+          taskId: task.id,
+          taskText: task.text,
+          error: err.message,
+        });
+      }
+    }
+
+    // Update goal status to 'in-progress' if any sessions spawned
+    if (spawnedSessions.length > 0) {
+      const updatedData = store.load();
+      const updatedGoal = updatedData.goals.find(g => g.id === goalId);
+      if (updatedGoal && updatedGoal.status !== 'done') {
+        updatedGoal.status = 'active';
+        updatedGoal.updatedAtMs = Date.now();
+        store.save(updatedData);
+      }
+    }
+
+    return {
+      goalId,
+      spawnedSessions,
+      errors: errors.length > 0 ? errors : undefined,
+      message: `Spawned ${spawnedSessions.length} session(s)${errors.length > 0 ? `, ${errors.length} error(s)` : ''}`,
+    };
+  }
+
   api.registerGatewayMethod('goals.kickoff', async ({ params, respond }) => {
     const { goalId } = params || {};
 
@@ -219,108 +325,19 @@ export default function register(api) {
     }
 
     try {
-      const data = store.load();
-      const goal = data.goals.find(g => g.id === goalId);
+      const result = await internalKickoff(goalId);
 
-      if (!goal) {
-        return respond(false, null, `Goal ${goalId} not found`);
-      }
-
-      const tasks = goal.tasks || [];
-
-      // Collect IDs of tasks that are already done
-      const doneTasks = new Set(tasks.filter(t => t.status === 'done' || t.done).map(t => t.id));
-
-      const tasksToSpawn = tasks.filter(t => {
-        // Skip already-assigned or done tasks
-        if (t.sessionKey || t.status === 'done') return false;
-
-        // Check dependency ordering: only spawn if ALL dependencies are done
-        if (Array.isArray(t.dependsOn) && t.dependsOn.length > 0) {
-          const allDepsDone = t.dependsOn.every(depId => doneTasks.has(depId));
-          if (!allDepsDone) return false;
-        }
-
-        return true;
-      });
-
-      if (tasksToSpawn.length === 0) {
-        return respond(true, {
-          goalId,
-          spawnedSessions: [],
-          message: 'No tasks to spawn',
-        });
-      }
-
-      const spawnedSessions = [];
-      const errors = [];
-
-      for (const task of tasksToSpawn) {
-        try {
-          // Resolve role -> actual agent ID using config, fall back to 'main'
-          const resolvedAgentId = resolveAgent(store, task.assignedAgent) || 'main';
-
-          // Create a promise-based wrapper for the spawn handler
-          const result = await new Promise((resolve, reject) => {
-            taskSpawnHandler({
-              params: {
-                goalId,
-                taskId: task.id,
-                agentId: resolvedAgentId,
-                model: task.model || null,
-              },
-              respond: (success, data, error) => {
-                if (success) {
-                  resolve(data);
-                } else {
-                  reject(new Error(error?.message || error || 'Spawn failed'));
-                }
-              },
-            });
-          });
-
-          spawnedSessions.push({
-            taskId: task.id,
-            taskText: task.text,
-            sessionKey: result.sessionKey,
-            agentId: result.agentId,
-            assignedRole: task.assignedAgent,  // Original role/spec from task
-            autonomyMode: result.autonomyMode,
-          });
-        } catch (err) {
-          errors.push({
-            taskId: task.id,
-            taskText: task.text,
-            error: err.message,
-          });
-        }
-      }
-
-      // Update goal status to 'in-progress' if any sessions spawned
-      if (spawnedSessions.length > 0) {
-        const updatedData = store.load();
-        const updatedGoal = updatedData.goals.find(g => g.id === goalId);
-        if (updatedGoal && updatedGoal.status !== 'done') {
-          updatedGoal.status = 'active';
-          updatedGoal.updatedAtMs = Date.now();
-          store.save(updatedData);
-        }
-
-        // Broadcast kickoff event
+      // Broadcast kickoff event if sessions were spawned
+      if (result.spawnedSessions.length > 0) {
         broadcastPlanUpdate({
           event: 'goal.kickoff',
           goalId,
-          spawnedCount: spawnedSessions.length,
-          spawnedSessions,
+          spawnedCount: result.spawnedSessions.length,
+          spawnedSessions: result.spawnedSessions,
         });
       }
 
-      respond(true, {
-        goalId,
-        spawnedSessions,
-        errors: errors.length > 0 ? errors : undefined,
-        message: `Spawned ${spawnedSessions.length} session(s)${errors.length > 0 ? `, ${errors.length} error(s)` : ''}`,
-      });
+      respond(true, result);
     } catch (err) {
       respond(false, null, err.message);
     }
@@ -726,7 +743,20 @@ export default function register(api) {
           },
         },
         async execute(toolCallId, params) {
-          return goalUpdateExecute(toolCallId, { ...params, sessionKey: ctx.sessionKey });
+          const result = await goalUpdateExecute(toolCallId, { ...params, sessionKey: ctx.sessionKey });
+
+          // Broadcast task completion event if a task was marked done
+          if (result._meta?.taskCompletedId) {
+            broadcastPlanUpdate({
+              event: 'goal.task_completed',
+              goalId: result._meta.goalId,
+              taskId: result._meta.taskCompletedId,
+              allTasksDone: result._meta.allTasksDone,
+              timestamp: Date.now(),
+            });
+          }
+
+          return result;
         },
       };
     },

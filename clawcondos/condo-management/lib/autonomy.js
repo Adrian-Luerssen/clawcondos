@@ -20,22 +20,28 @@ export const DEFAULT_AUTONOMY_MODE = 'plan';
 
 /**
  * Resolve the effective autonomy mode for a task
- * Task-level setting overrides condo-level setting
+ * Resolution chain: task > goal > condo > default('plan')
  * @param {object} task - Task object
+ * @param {object} [goal] - Goal object (optional)
  * @param {object} [condo] - Condo object (optional)
  * @returns {string} Effective autonomy mode
  */
-export function resolveAutonomyMode(task, condo) {
+export function resolveAutonomyMode(task, goal, condo) {
   // Task-level override takes precedence
   if (task?.autonomyMode && AUTONOMY_MODES.includes(task.autonomyMode)) {
     return task.autonomyMode;
   }
-  
+
+  // Fall back to goal-level setting
+  if (goal?.autonomyMode && AUTONOMY_MODES.includes(goal.autonomyMode)) {
+    return goal.autonomyMode;
+  }
+
   // Fall back to condo-level setting
   if (condo?.autonomyMode && AUTONOMY_MODES.includes(condo.autonomyMode)) {
     return condo.autonomyMode;
   }
-  
+
   // Default to 'plan' mode
   return DEFAULT_AUTONOMY_MODE;
 }
@@ -132,35 +138,36 @@ export function setCondoAutonomy(store, condoId, mode) {
  * @param {object} store - Goals store instance
  * @param {string} goalId - Goal ID
  * @param {string} taskId - Task ID
- * @returns {{ success: boolean, mode?: string, directive?: string, taskMode?: string, condoMode?: string, error?: string }}
+ * @returns {{ success: boolean, mode?: string, directive?: string, taskMode?: string, goalMode?: string, condoMode?: string, error?: string }}
  */
 export function getTaskAutonomyInfo(store, goalId, taskId) {
   const data = store.load();
   const goal = data.goals.find(g => g.id === goalId);
-  
+
   if (!goal) {
     return { success: false, error: `Goal ${goalId} not found` };
   }
-  
+
   const task = (goal.tasks || []).find(t => t.id === taskId);
-  
+
   if (!task) {
     return { success: false, error: `Task ${taskId} not found in goal` };
   }
-  
+
   let condo = null;
   if (goal.condoId) {
     condo = data.condos.find(c => c.id === goal.condoId);
   }
-  
-  const mode = resolveAutonomyMode(task, condo);
+
+  const mode = resolveAutonomyMode(task, goal, condo);
   const directive = buildAutonomyDirective(mode);
-  
+
   return {
     success: true,
     mode,
     directive,
     taskMode: task.autonomyMode || null,
+    goalMode: goal.autonomyMode || null,
     condoMode: condo?.autonomyMode || null,
   };
 }

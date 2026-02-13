@@ -64,7 +64,7 @@ export function createTaskSpawnHandler(store) {
       if (goal.condoId) {
         condo = data.condos.find(c => c.id === goal.condoId);
       }
-      const autonomyMode = resolveAutonomyMode(task, condo);
+      const autonomyMode = resolveAutonomyMode(task, goal, condo);
       const autonomyDirective = buildAutonomyDirective(autonomyMode);
 
       // Build spawned agent context: project summary (if in condo) + goal state + task assignment + worker skill

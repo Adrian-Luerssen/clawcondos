@@ -321,37 +321,62 @@ describe('Full Lifecycle Integration — Condo Pipeline', () => {
   });
 
   // ───────────────────────────────────────────────────────────
-  // Phase 5: Kickoff — Spawn All Tasks
+  // Phase 5: Kickoff — Spawn First Tasks (Sequential Dependencies)
   // ───────────────────────────────────────────────────────────
-  describe('Phase 5 — Kickoff (Spawn All Tasks)', () => {
-    it('kickoff spawns 3 sessions per goal (9 total)', async () => {
+  describe('Phase 5 — Kickoff (Sequential Dependencies)', () => {
+    it('tasks have sequential dependencies from PM plan creation', async () => {
+      for (const goalId of goalIds) {
+        const result = await callMethod(api, 'goals.get', { id: goalId });
+        const tasks = result.goal.tasks;
+        expect(tasks).toHaveLength(3);
+
+        // First task has no dependencies
+        expect(tasks[0].dependsOn).toEqual([]);
+        // Second task depends on first
+        expect(tasks[1].dependsOn).toEqual([tasks[0].id]);
+        // Third task depends on second
+        expect(tasks[2].dependsOn).toEqual([tasks[1].id]);
+      }
+    });
+
+    it('kickoff spawns only the first task per goal (others blocked by deps)', async () => {
       allSpawned = [];
 
       for (const goalId of goalIds) {
         const result = await callMethod(api, 'goals.kickoff', { goalId });
-        expect(result.spawnedSessions).toHaveLength(3);
+        // Only 1 task spawned per goal (the first, which has no dependencies)
+        expect(result.spawnedSessions).toHaveLength(1);
         expect(result.goalId).toBe(goalId);
 
         for (const s of result.spawnedSessions) {
           expect(s.taskId).toBeTruthy();
           expect(s.sessionKey).toBeTruthy();
           expect(s.agentId).toBeTruthy();
-          // Session key follows agent:<agentId>:subagent:<suffix> pattern
           expect(s.sessionKey).toMatch(/^agent:[^:]+:subagent:/);
+          expect(s.taskContext).toBeTruthy();
+          expect(s.taskContext).toContain('Your Assignment');
           allSpawned.push({ ...s, goalId });
         }
       }
 
-      expect(allSpawned).toHaveLength(9);
+      // 1 per goal × 3 goals = 3 total
+      expect(allSpawned).toHaveLength(3);
     });
 
-    it('tasks now have sessionKey set and status in-progress', async () => {
+    it('first task per goal has sessionKey; remaining tasks are still pending', async () => {
       for (const goalId of goalIds) {
         const result = await callMethod(api, 'goals.get', { id: goalId });
-        for (const task of result.goal.tasks) {
-          expect(task.sessionKey).toBeTruthy();
-          expect(task.status).toBe('in-progress');
-        }
+        const tasks = result.goal.tasks;
+
+        // First task is spawned
+        expect(tasks[0].sessionKey).toBeTruthy();
+        expect(tasks[0].status).toBe('in-progress');
+
+        // Remaining tasks are still pending (blocked by dependencies)
+        expect(tasks[1].sessionKey).toBeNull();
+        expect(tasks[1].status).toBe('pending');
+        expect(tasks[2].sessionKey).toBeNull();
+        expect(tasks[2].status).toBe('pending');
       }
     });
 
@@ -364,7 +389,7 @@ describe('Full Lifecycle Integration — Condo Pipeline', () => {
       }
     });
 
-    it('second kickoff returns empty spawnedSessions (idempotent)', async () => {
+    it('second kickoff returns empty spawnedSessions (first task already spawned, rest blocked)', async () => {
       for (const goalId of goalIds) {
         const result = await callMethod(api, 'goals.kickoff', { goalId });
         expect(result.spawnedSessions).toHaveLength(0);
@@ -407,52 +432,154 @@ describe('Full Lifecycle Integration — Condo Pipeline', () => {
   });
 
   // ───────────────────────────────────────────────────────────
-  // Phase 6: Simulate Execution via goal_update Tool
+  // Phase 6: Verify Kickoff Produces Correct Agent Startup Data
   // ───────────────────────────────────────────────────────────
-  describe('Phase 6 — Simulate Execution via goal_update', () => {
-    it('marks each task done via the goal_update tool', async () => {
+  // NOTE: This is a unit test — it cannot start real agents. Instead it verifies
+  // that kickoff returns the exact data the frontend needs to call chat.send and
+  // start agents. The frontend sends: rpcCall('chat.send', { sessionKey, message: taskContext })
+  describe('Phase 6 — Verify Kickoff Agent Startup Data', () => {
+    it('each spawned session has taskContext with workspace path and cd instruction', async () => {
+      const condoResult = await callMethod(api, 'condos.get', { id: condoId });
+      const condoWsPath = condoResult.condo.workspace.path;
+
+      for (const s of allSpawned) {
+        // taskContext must include workspace working directory
+        expect(s.taskContext).toContain('Working Directory');
+        expect(s.taskContext).toContain('cd ');
+
+        // Workspace path should be inside the condo workspace
+        const goalResult = await callMethod(api, 'goals.get', { id: s.goalId });
+        const wtPath = goalResult.goal.worktree.path;
+        expect(s.taskContext).toContain(wtPath);
+      }
+    });
+
+    it('each spawned session has taskContext with assignment details', async () => {
+      for (const s of allSpawned) {
+        // Must contain the assignment section
+        expect(s.taskContext).toContain('Your Assignment');
+        expect(s.taskContext).toContain(s.taskText);
+        // Must contain goal_update instruction
+        expect(s.taskContext).toContain('goal_update');
+        expect(s.taskContext).toContain('mark it done');
+      }
+    });
+
+    it('each spawned session has taskContext with PM plan reference', async () => {
+      for (const s of allSpawned) {
+        // PM plan is included for worker context
+        expect(s.taskContext).toContain('PM Plan');
+        expect(s.taskContext).toContain(CANNED_PLAN.substring(0, 50));
+      }
+    });
+
+    it('each spawned session has taskContext with plan file path', async () => {
+      for (const s of allSpawned) {
+        expect(s.taskContext).toContain('Plan File');
+        expect(s.taskContext).toContain('PLAN.md');
+        expect(s.taskContext).toContain('planStatus');
+      }
+    });
+
+    it('frontend agent mapping: each session has agentId matching assigned role', async () => {
+      // Verify the agentId-to-role mapping is correct for each session
+      const roleAgentMap = {};
+      for (const s of allSpawned) {
+        if (!roleAgentMap[s.assignedRole]) roleAgentMap[s.assignedRole] = new Set();
+        roleAgentMap[s.assignedRole].add(s.agentId);
+      }
+
+      // All frontend tasks should map to the same agentId
+      for (const [role, agents] of Object.entries(roleAgentMap)) {
+        expect(agents.size).toBe(1);
+      }
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────
+  // Phase 7: Agent Completion Flow (goal_update tool)
+  // ───────────────────────────────────────────────────────────
+  // After agents receive taskContext via chat.send, they work on the task and
+  // call goal_update to report completion. This phase tests sequential completion
+  // with re-kickoff to spawn newly unblocked tasks.
+  describe('Phase 7 — Agent Completion Flow (goal_update + re-kickoff)', () => {
+    it('goal_update tool is available for each spawned session', async () => {
       const factory = api._getToolFactory('goal_update');
       expect(factory).toBeTypeOf('function');
 
-      // Group spawned sessions by goalId
-      const byGoal = {};
       for (const s of allSpawned) {
-        if (!byGoal[s.goalId]) byGoal[s.goalId] = [];
-        byGoal[s.goalId].push(s);
+        const tool = factory({ sessionKey: s.sessionKey });
+        expect(tool).not.toBeNull();
+        expect(tool.name).toBe('goal_update');
       }
+    });
+
+    it('completes all tasks sequentially via goal_update + re-kickoff', async () => {
+      const factory = api._getToolFactory('goal_update');
 
       for (const goalId of goalIds) {
-        const sessions = byGoal[goalId];
+        const goalData = await callMethod(api, 'goals.get', { id: goalId });
+        const tasks = goalData.goal.tasks;
 
-        for (const s of sessions) {
-          const tool = factory({ sessionKey: s.sessionKey });
-          expect(tool).not.toBeNull();
-          expect(tool.name).toBe('goal_update');
+        for (let i = 0; i < tasks.length; i++) {
+          // Re-fetch to get current session keys
+          const current = await callMethod(api, 'goals.get', { id: goalId });
+          const task = current.goal.tasks[i];
 
-          const result = await tool.execute('call-' + s.taskId, {
-            taskId: s.taskId,
+          // Task should have a session key (spawned by kickoff or re-kickoff)
+          expect(task.sessionKey).toBeTruthy();
+          expect(task.status).toBe('in-progress');
+
+          // Mark task done via goal_update
+          const tool = factory({ sessionKey: task.sessionKey });
+          const result = await tool.execute('call-' + task.id, {
+            taskId: task.id,
             status: 'done',
-            summary: `Completed: ${s.taskText || s.taskId}`,
+            summary: `Completed: ${task.text}`,
           });
-
           expect(result.content[0].text).toContain('updated');
+
+          // goal_update returns _meta with task completion info
+          expect(result._meta).toBeDefined();
+          expect(result._meta.goalId).toBe(goalId);
+          if (i < tasks.length - 1) {
+            // Not the last task — _meta indicates task completed but not all done
+            expect(result._meta.taskCompletedId).toBe(task.id);
+            expect(result._meta.allTasksDone).toBe(false);
+
+            // Re-kickoff to spawn the next task (whose dependency is now satisfied)
+            const kick = await callMethod(api, 'goals.kickoff', { goalId });
+            expect(kick.spawnedSessions).toHaveLength(1);
+            expect(kick.spawnedSessions[0].taskId).toBe(tasks[i + 1].id);
+
+            // Track newly spawned session
+            allSpawned.push({ ...kick.spawnedSessions[0], goalId });
+          } else {
+            // Last task — all tasks done
+            expect(result._meta.taskCompletedId).toBe(task.id);
+            expect(result._meta.allTasksDone).toBe(true);
+          }
+        }
+      }
+
+      // Verify all tasks are now done in the store
+      for (const goalId of goalIds) {
+        const result = await callMethod(api, 'goals.get', { id: goalId });
+        for (const task of result.goal.tasks) {
+          expect(task.status).toBe('done');
+          expect(task.done).toBe(true);
+          expect(task.summary).toBeTruthy();
         }
       }
     });
 
-    it('marks each goal done via goal_update tool', async () => {
+    it('marking a goal done via goal_update changes goal status', async () => {
       const factory = api._getToolFactory('goal_update');
 
-      // Group spawned sessions by goalId
-      const byGoal = {};
-      for (const s of allSpawned) {
-        if (!byGoal[s.goalId]) byGoal[s.goalId] = [];
-        byGoal[s.goalId].push(s);
-      }
-
       for (const goalId of goalIds) {
-        // Use the first spawned session for this goal to mark it done
-        const sessionKey = byGoal[goalId][0].sessionKey;
+        // Use first task's session (any session from this goal works)
+        const goalData = await callMethod(api, 'goals.get', { id: goalId });
+        const sessionKey = goalData.goal.tasks[0].sessionKey;
         const tool = factory({ sessionKey });
 
         const result = await tool.execute('done-' + goalId, {
@@ -461,36 +588,20 @@ describe('Full Lifecycle Integration — Condo Pipeline', () => {
 
         expect(result.content[0].text).toContain('goal marked done');
       }
-    });
-  });
 
-  // ───────────────────────────────────────────────────────────
-  // Phase 7: Final Validation
-  // ───────────────────────────────────────────────────────────
-  describe('Phase 7 — Final Validation', () => {
-    it('all 3 goals are done', async () => {
+      // Verify all goals are done
       for (const goalId of goalIds) {
         const result = await callMethod(api, 'goals.get', { id: goalId });
         expect(result.goal.status).toBe('done');
         expect(result.goal.completed).toBe(true);
       }
     });
+  });
 
-    it('all 9 tasks are done with sessionKey and summary set', async () => {
-      let totalTasks = 0;
-      for (const goalId of goalIds) {
-        const result = await callMethod(api, 'goals.get', { id: goalId });
-        for (const task of result.goal.tasks) {
-          expect(task.status).toBe('done');
-          expect(task.done).toBe(true);
-          expect(task.sessionKey).toBeTruthy();
-          expect(task.summary).toBeTruthy();
-          totalTasks++;
-        }
-      }
-      expect(totalTasks).toBe(9);
-    });
-
+  // ───────────────────────────────────────────────────────────
+  // Phase 8: Final Validation
+  // ───────────────────────────────────────────────────────────
+  describe('Phase 8 — Final Validation', () => {
     it('all spawned sessions exist in sessionIndex', async () => {
       for (const s of allSpawned) {
         const result = await callMethod(api, 'goals.sessionLookup', {
@@ -582,9 +693,9 @@ describe('Full Lifecycle Integration — Condo Pipeline', () => {
   });
 
   // ───────────────────────────────────────────────────────────
-  // Phase 8: Kickoff Respects Task Dependencies
+  // Phase 9: Kickoff Respects Task Dependencies
   // ───────────────────────────────────────────────────────────
-  describe('Phase 8 — Kickoff Respects Task Dependencies', () => {
+  describe('Phase 9 — Kickoff Respects Task Dependencies', () => {
     let depGoalId;
     let depTasks;
 
@@ -674,9 +785,9 @@ describe('Full Lifecycle Integration — Condo Pipeline', () => {
   });
 
   // ───────────────────────────────────────────────────────────
-  // Phase 9: Clone from Git Repo URL
+  // Phase 10: Clone from Git Repo URL
   // ───────────────────────────────────────────────────────────
-  describe('Phase 9 — Clone from Git Repo URL', () => {
+  describe('Phase 10 — Clone from Git Repo URL', () => {
     it('creates a condo by cloning a local bare repo', async () => {
       // Create a local bare repo (avoids network dependency in tests)
       const bareRepo = join(TEST_DIR, 'recipe-box-bare.git');
